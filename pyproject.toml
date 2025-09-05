@@ -1,0 +1,7 @@
+[project]
+name = "Shridhar-DPR-DLR"
+version = "0.1.0"
+description = "This project is a proof of concept for a chatbot that can answer questions about the Shridhar-DPR-DLR and updated DPR by voice command"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
