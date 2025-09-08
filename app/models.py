@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 class User(BaseModel):
@@ -33,3 +33,18 @@ class Document(BaseModel):
 
 class DocumentListResponse(BaseModel):
     documents: List[Document]
+
+class SheetDataResponse(BaseModel):
+    success: bool
+    spreadsheet_id: str
+    sheet: str
+    range: str
+    data: List[List[str]]
+    row_count: int
+    column_count: int
+    error: Optional[str] = None
+
+class MCPToolResponse(BaseModel):
+    success: bool
+    data: Optional[Any] = None
+    error: Optional[str] = None
