@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, List, Any
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any, Dict, Tuple
 from datetime import datetime
 
 class User(BaseModel):
@@ -39,12 +39,85 @@ class SheetDataResponse(BaseModel):
     spreadsheet_id: str
     sheet: str
     range: str
-    data: List[List[str]]
+    data: Dict[int, List[str]]  # Changed to Dict with row numbers as keys
     row_count: int
     column_count: int
+    total_rows_processed: Optional[int] = None  # Total rows from Google Sheets (including empty)
+    start_row: Optional[int] = None  # Starting row number from the range
+    error: Optional[str] = None
+
+class ColumnDataResponse(BaseModel):
+    success: bool
+    spreadsheet_id: str
+    sheet: str
+    cell_reference: str  # e.g., "C3"
+    column: str  # e.g., "C"
+    start_row: int  # e.g., 3
+    data: Dict[int, List[str]]  # {row_number: [value]}
+    row_count: int
+    total_rows_processed: int
+    stopped_due_to_empty_rows: bool
     error: Optional[str] = None
 
 class MCPToolResponse(BaseModel):
     success: bool
     data: Optional[Any] = None
+    error: Optional[str] = None
+
+class DPRUpdationResult(BaseModel):
+    element_index: List[str] = Field(description="list of the element index mentioned in the user's query")
+    activity_index: List[str] = Field(description="list of the activity index mentioned in the user's query")
+    activity_quantities: List[Tuple[str, str]] = Field(description="list of tuple of the activity quantities with the type (like add updation or replace updation or remove updation)")
+    agent_feedback: List[str] = Field(description="list of the agent feedback for the user's query just an single feedback for whole query")
+    operation_date: str = Field(description="Date when the operation occurred in DD-MM-YYYY format. Extract from user query or use today's date. If multiple dates mentioned, leave empty and provide error feedback.")
+
+class DLRUpdationResult(BaseModel):
+    row_index: List[str]
+    columns_index: List[str]
+    updations: List[str]
+    quantities: List[int]
+    feedbacks: List[str]
+
+class LogQueryResult(BaseModel):
+    result: str = Field(description="Answer of the given Query based on the provide logs data")
+
+class UpdatedSheetRequest(BaseModel):
+    site_engineer_name: str
+    sheet_name: str
+    phone_number: str
+    users_query: str
+
+class UpdatedSheetResponse(BaseModel):
+    success: bool
+    site_engineer_name: str
+    phone_number: str
+    sheet_id: str
+    sheet_name: str
+    users_query: str
+    element_data_summary: str  # Summary of B10 column data
+    activity_data_summary: str  # Summary of C10:E96 range data
+    llm_result: Optional[DPRUpdationResult] = None
+    error: Optional[str] = None
+
+class RowDataResponse(BaseModel):
+    success: bool
+    spreadsheet_id: str
+    sheet: str
+    range: str
+    row: int
+    data: Dict[str, str]  # {column_name: value} e.g., {"A": "data1", "B": "data2"}
+    column_count: int
+    error: Optional[str] = None
+
+class CopySpreadsheetRequest(BaseModel):
+    spreadsheet_id: str
+    project_name: str
+    month: str
+
+class CopySpreadsheetResponse(BaseModel):
+    success: bool
+    new_spreadsheet_id: str
+    spreadsheet_name: str
+    data_copied: bool
+    message: str
     error: Optional[str] = None

@@ -9,8 +9,10 @@ from app.google_auth import (
     write_hello_world_to_sheet,
     list_google_sheets
 )
-from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse
+from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse
 from app.mcp_client import mcp_client
+from app.llm_response import get_support_agent, prompt_builder
+from app.config import GROQ_API_KEY
 from typing import Optional
 
 app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
@@ -67,6 +69,10 @@ async def home():
                 <h4>🤖 MCP-Powered Features:</h4>
                 <ul>
                     <li><strong>GET /mcp/sheet-data/{sheet_id}</strong> - Get sheet data using MCP</li>
+                    <li><strong>GET /mcp/column-data/{sheet_id}</strong> - Get entire column data from a starting cell (e.g., C3)</li>
+                    <li><strong>GET /mcp/row-data/{sheet_id}</strong> - Get row data with column names as keys (e.g., 4A:4D)</li>
+                    <li><strong>POST /updated_sheet/{sheet_id}</strong> - Process DPR updates using AI analysis</li>
+                    <li><strong>POST /copy-spreadsheet</strong> - Copy spreadsheet with monthly naming and previous month data transfer</li>
                     <li><strong>POST /mcp/analyze-sheet/{sheet_id}</strong> - AI analysis of sheet data</li>
                 </ul>
                 
@@ -152,21 +158,6 @@ async def callback(code: str):
     </html>
     """)
 
-# Original endpoints
-@app.post("/write-hello-world/{sheet_id}", response_model=WriteResponse)
-async def write_hello_world(
-    sheet_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Write 'Hello World' to Google Sheet at A1"""
-    
-    result = await write_hello_world_to_sheet(current_user['google_id'], sheet_id)
-    
-    if not result:
-        raise HTTPException(status_code=500, detail="Failed to write to sheet")
-    
-    return WriteResponse(**result)
-
 @app.get("/user/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
@@ -190,7 +181,6 @@ async def show_document_list(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# New MCP-powered endpoints
 @app.get("/mcp/sheet-data/{sheet_id}", response_model=SheetDataResponse)
 async def get_sheet_data_mcp(
     sheet_id: str,
@@ -200,7 +190,7 @@ async def get_sheet_data_mcp(
 ):
     """
     Get sheet data using MCP integration with user's OAuth credentials.
-    This provides more structured data access compared to direct API calls.
+    This endpoint uses 0-based indexing instead of actual Google Sheets row numbers.
     """
     try:
         result = await mcp_client.get_sheet_data_with_user_auth(
@@ -213,6 +203,18 @@ async def get_sheet_data_mcp(
         if not result.get('success', False):
             raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
         
+        # Convert to 0-based indexing
+        original_data = result.get('data', {})
+        zero_indexed_data = {}
+        
+        # Convert from actual row numbers to 0-based index
+        for index, (row_num, row_data) in enumerate(original_data.items()):
+            zero_indexed_data[index] = row_data
+        
+        # Update the result with 0-based indexed data
+        result['data'] = zero_indexed_data
+        result['row_count'] = len(zero_indexed_data)
+        
         return SheetDataResponse(**result)
         
     except HTTPException as e:
@@ -220,83 +222,484 @@ async def get_sheet_data_mcp(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MCP error: {str(e)}")
 
-@app.post("/mcp/analyze-sheet/{sheet_id}")
-async def analyze_sheet_data(
+@app.get("/mcp/column-data/{sheet_id}", response_model=ColumnDataResponse)
+async def get_column_data_mcp(
     sheet_id: str,
+    cell_reference: str,
     sheet: str = "Sheet1",
-    range_name: str = "A1:Z1000",
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Analyze sheet data and provide insights.
-    This demonstrates how MCP can be used for AI-powered data analysis.
+    Get all data from a specific column starting from a given row using MCP integration.
+    Stops reading when 10 consecutive empty rows are encountered.
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        cell_reference: Starting cell reference (e.g., "C3" for column C starting from row 3)
+        sheet: Sheet name (default: "Sheet1")
+        
+    Returns:
+        Column data with actual row indices: {row_number: [value], ...}
+        
+    Example:
+        GET /mcp/column-data/1ABC123.../C3?sheet=Sheet1
+        Returns: {3: ["data1"], 5: ["data2"], 7: ["data3"], ...}
     """
     try:
-        # First, get the sheet data
-        sheet_data = await mcp_client.get_sheet_data_with_user_auth(
+        result = await mcp_client.get_column_data_with_user_auth(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet=sheet,
+            cell_reference=cell_reference
+        )
+        
+        if not result.get('success', False):
+            raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
+        
+        return ColumnDataResponse(**result)
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MCP column data error: {str(e)}")
+
+@app.get("/mcp/row-data/{sheet_id}", response_model=RowDataResponse)
+async def get_row_data_mcp(
+    sheet_id: str,
+    range_name: str,
+    sheet: str = "Sheet1",
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get row data from a specific range with column names as keys using MCP integration.
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        range_name: Range in format "RowColumn:RowColumn" like "4A:4D" or "8AV:8BZ" 
+                   (single row with column range - row number first, then column letters)
+        sheet: Sheet name (default: "Sheet1")
+        
+    Returns:
+        Row data with column names as keys: {"A": data, "B": data, "C": data, ...}
+        
+    Examples:
+        GET /mcp/row-data/1ABC123.../4A:4D?sheet=Sheet1
+        Returns row 4, columns A to D: {"A": "data1", "B": "data2", "C": "data3", "D": "data4"}
+        
+        GET /mcp/row-data/1ABC123.../8AV:8BZ?sheet=Sheet1  
+        Returns row 8, columns AV to BZ: {"AV": "data1", "AW": "data2", ..., "BZ": "data31"}
+    """
+    try:
+        result = await mcp_client.get_row_values_from_range(
             google_id=current_user['google_id'],
             spreadsheet_id=sheet_id,
             sheet=sheet,
             range_name=range_name
         )
         
-        if not sheet_data.get('success', False):
-            raise HTTPException(status_code=500, detail=sheet_data.get('error', 'Failed to get sheet data'))
+        if not result.get('success', False):
+            raise HTTPException(status_code=500, detail=result.get('error', 'Unknown error'))
         
-        data = sheet_data.get('data', [])
-        
-        if not data:
-            return {
-                "success": True,
-                "analysis": "Sheet appears to be empty or no data in the specified range.",
-                "sheet_info": sheet_data
-            }
-        
-        # Basic analysis
-        analysis = {
-            "row_count": len(data),
-            "column_count": len(data[0]) if data else 0,
-            "has_headers": True if data and len(data) > 1 else False,
-            "headers": data[0] if data else [],
-            "sample_data": data[1:6] if len(data) > 1 else [],  # First 5 data rows
-            "data_types": [],
-            "summary": ""
-        }
-        
-        # Analyze data types in each column
-        if len(data) > 1:
-            for col_idx in range(len(data[0])):
-                col_values = [row[col_idx] if col_idx < len(row) else '' for row in data[1:]]
-                col_values = [v for v in col_values if v.strip()]  # Remove empty values
-                
-                if col_values:
-                    # Simple type detection
-                    numeric_count = sum(1 for v in col_values if v.replace('.', '').replace('-', '').isdigit())
-                    if numeric_count > len(col_values) * 0.8:
-                        analysis["data_types"].append("numeric")
-                    else:
-                        analysis["data_types"].append("text")
-                else:
-                    analysis["data_types"].append("empty")
-        
-        # Generate summary
-        analysis["summary"] = f"Found {analysis['row_count']} rows and {analysis['column_count']} columns. "
-        if analysis["has_headers"]:
-            analysis["summary"] += f"Headers detected: {', '.join(analysis['headers'][:5])}{'...' if len(analysis['headers']) > 5 else ''}."
-        
-        return {
-            "success": True,
-            "sheet_id": sheet_id,
-            "sheet": sheet,
-            "range": range_name,
-            "analysis": analysis,
-            "raw_data_preview": data[:3] if data else []  # First 3 rows for preview
-        }
+        return RowDataResponse(**result)
         
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"MCP row data error: {str(e)}")
+
+@app.post("/update_dpr/{sheet_id}", response_model=UpdatedSheetResponse)
+async def update_dpr(
+    sheet_id: str,
+    request: UpdatedSheetRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Process sheet data through LLM for DPR updates and perform actual cell updates.
+    
+    This endpoint:
+    1. Gets element data from column B starting at row 10
+    2. Gets activity data from range C10:E96  
+    3. Combines data with user query using prompt builder
+    4. Processes through LLM for structured analysis
+    5. Gets date-column mapping from row 8AV:8BZ
+    6. Calculates target cells (element_index + activity_index)
+    7. Performs actual cell updates in the spreadsheet
+    8. Logs all update operations to LOG sheet
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        request: Contains site_engineer_name, phone_number, sheet_name, users_query
+        
+    Returns:
+        Structured response with LLM analysis, update results, and agent feedback
+        
+    Example Flow:
+        - User: "Villa 101 Excavation done by 40 cubic meter on 8 August 2025"
+        - LLM: element_index=[10], activity_index=[1], quantities=[[40, "add"]], date="08-08-2025"
+        - System: Finds column "BC" for date "08-08-2025", updates cell BC11 (10+1) with +40
+        - Logs: Records operation in LOG sheet with all details
+    """
+    try:
+        # Get element data from column B starting at B10
+        element_result = await mcp_client.get_column_data_with_user_auth(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet=request.sheet_name,
+            cell_reference="B10"
+        )
+        
+        if not element_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get element data: {element_result.get('error', 'Unknown error')}")
+        
+        # Get activity data from range C10:E96
+        activity_result = await mcp_client.get_sheet_data_with_user_auth(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet=request.sheet_name,
+            range_name="C10:E96"
+        )
+        
+        if not activity_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get activity data: {activity_result.get('error', 'Unknown error')}")
+        
+        # Convert activity data to 0-based indexing (same as /mcp/sheet-data endpoint)
+        original_activity_data = activity_result.get('data', {})
+        zero_indexed_activity_data = {}
+        
+        # Convert from actual row numbers to 0-based index for activity data
+        for index, (row_num, row_data) in enumerate(original_activity_data.items()):
+            zero_indexed_activity_data[index] = row_data
+        
+        # Convert data to string format for prompt
+        element_data_str = str(element_result.get('data', {}))
+        activity_data_str = str(zero_indexed_activity_data)
+        
+        # Build prompt using the prompt builder
+        prompt = prompt_builder(
+            element_data=element_data_str,
+            activity_data=activity_data_str,
+            users_query=request.users_query
+        )
+        
+        # Get LLM agent and process the prompt
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        
+        try:
+            agent = get_support_agent(GROQ_API_KEY)
+            run_response = agent.run(prompt)
+            
+            # Extract the actual result from RunResponse
+            # The agent should return a DPRUpdationResult directly, but it's wrapped in RunResponse
+            if hasattr(run_response, 'content'):
+                llm_response = run_response.content
+            elif hasattr(run_response, 'data'):
+                llm_response = run_response.data
+            else:
+                # If it's already the right type, use it directly
+                llm_response = run_response
+                
+            # Validate that we have a proper DPRUpdationResult
+            if not isinstance(llm_response, DPRUpdationResult):
+                # Try to create one from the response if it's a dict
+                if isinstance(llm_response, dict):
+                    llm_response = DPRUpdationResult(**llm_response)
+                else:
+                    raise ValueError(f"Invalid LLM response type: {type(llm_response)}")
+                    
+        except Exception as llm_error:
+            raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
+        
+        # Validate operation date
+        operation_date = llm_response.operation_date
+        if operation_date:
+            # Validate date format and check if it's not in the future
+            try:
+                from datetime import datetime
+                if operation_date:  # Not empty string
+                    parsed_date = datetime.strptime(operation_date, "%d-%m-%Y")
+                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    if parsed_date > today:
+                        # Future date detected, use today's date
+                        operation_date = datetime.now().strftime("%d-%m-%Y")
+                        # Update the LLM response
+                        llm_response.operation_date = operation_date
+                        # Update feedback to mention date correction
+                        if llm_response.agent_feedback:
+                            llm_response.agent_feedback[0] += " (Note: Future date corrected to today's date)"
+            except ValueError:
+                # Invalid date format, use today's date
+                operation_date = datetime.now().strftime("%d-%m-%Y")
+                llm_response.operation_date = operation_date
+        
+        # Perform actual cell updates if LLM provided valid data
+        update_summary = "No updates performed"
+        if (llm_response.element_index and llm_response.activity_index and 
+            llm_response.activity_quantities and llm_response.operation_date):
+            
+            try:
+                # Get date-column mapping from row 8AV:8BZ
+                date_mapping_result = await mcp_client.get_row_values_from_range(
+                    google_id=current_user['google_id'],
+                    spreadsheet_id=sheet_id,
+                    sheet=request.sheet_name,
+                    range_name="8AV:8BZ"
+                )
+                
+                if not date_mapping_result.get('success', False):
+                    raise HTTPException(status_code=500, detail=f"Failed to get date mapping: {date_mapping_result.get('error', 'Unknown error')}")
+                
+                # Find the column that matches the operation date
+                date_data = date_mapping_result.get('data', {})
+                target_column = None
+                
+                for column, date_value in date_data.items():
+                    if date_value == llm_response.operation_date:
+                        target_column = column
+                        break
+                
+                if not target_column:
+                    raise HTTPException(status_code=400, detail=f"No column found for date: {llm_response.operation_date}")
+                
+                # Calculate target cells and prepare updates
+                cell_list = []
+                updation_list = []
+                type_list = []
+                
+                for i in range(len(llm_response.element_index)):
+                    # Calculate row: element_index + activity_index
+                    element_idx = int(llm_response.element_index[i])
+                    activity_idx = int(llm_response.activity_index[i])
+                    target_row = element_idx + activity_idx
+                    
+                    # Create cell reference (e.g., "BC11", "BC98")
+                    cell_ref = f"{target_column}{target_row}"
+                    cell_list.append(cell_ref)
+                    
+                    # Extract quantity and operation type
+                    quantity_str, operation_type = llm_response.activity_quantities[i]
+                    updation_list.append(float(quantity_str))
+                    type_list.append(operation_type)
+                
+                # Perform batch cell updates
+                update_result = await mcp_client.update_cells_with_operations(
+                    google_id=current_user['google_id'],
+                    spreadsheet_id=sheet_id,
+                    sheet=request.sheet_name,
+                    cell_list=cell_list,
+                    updation_list=updation_list,
+                    type_list=type_list
+                )
+                
+                if not update_result.get('success', False):
+                    raise HTTPException(status_code=500, detail=f"Failed to update cells: {update_result.get('error', 'Unknown error')}")
+                
+                # Log each update operation
+                for i, result in enumerate(update_result.get('results', [])):
+                    if result.get('success', False):
+                        # Extract row number correctly from cell reference
+                        element_idx = int(llm_response.element_index[i])
+                        activity_idx = int(llm_response.activity_index[i])
+                        calculated_row = element_idx + activity_idx
+                        
+                        await mcp_client.log_update_operation(
+                            google_id=current_user['google_id'],
+                            spreadsheet_id=sheet_id,
+                            site_engineer_name=request.site_engineer_name,
+                            phone_number=request.phone_number,  # Add phone number
+                            updated_row_index=str(calculated_row),  # Use calculated row directly
+                            updated_column_index=target_column,
+                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updation_type=type_list[i],
+                            columns=target_column,
+                            user_query=request.users_query,
+                            feedback=llm_response.agent_feedback[0] if llm_response.agent_feedback else "Update completed",
+                            operation_date=llm_response.operation_date
+                        )
+                
+                successful_updates = update_result.get('successful_operations', 0)
+                total_updates = update_result.get('total_operations', 0)
+                update_summary = f"Updated {successful_updates}/{total_updates} cells successfully"
+                
+            except HTTPException as e:
+                raise e
+            except Exception as update_error:
+                raise HTTPException(status_code=500, detail=f"Cell update error: {str(update_error)}")
+        
+        # Create summary strings for the response
+        element_summary = f"Column B data from row 10: {len(element_result.get('data', {}))} rows retrieved"
+        activity_summary = f"Range C10:E96 data (0-indexed): {len(zero_indexed_activity_data)} rows retrieved"
+        
+        return UpdatedSheetResponse(
+            success=True,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            sheet_name=request.sheet_name,
+            users_query=request.users_query,
+            element_data_summary=element_summary,
+            activity_data_summary=f"{activity_summary}. {update_summary}",
+            llm_result=llm_response
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        return UpdatedSheetResponse(
+            success=False,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            sheet_name=request.sheet_name,
+            users_query=request.users_query,
+            element_data_summary="Failed to retrieve",
+            activity_data_summary="Failed to retrieve", 
+            llm_result=None,
+            error=f"Processing error: {str(e)}"
+        )
+
+@app.post("/new-spreadsheet", response_model=CopySpreadsheetResponse)
+async def new_spreadsheet_endpoint(
+    request: CopySpreadsheetRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Create a copy of a spreadsheet with monthly naming format, populate dates, and copy data from previous month.
+    
+    This endpoint:
+    1. Creates a copy of the source spreadsheet
+    2. Names it with format: {project_name}_{month}_{current_year}
+    3. Populates monthly dates in P8:AT8 and AV8:BZ8 (DD-MM-YYYY format)
+    4. Updates headers P7:AT7 ("Planned for Month of {MONTH} {YEAR}") and AV7:BZ7 ("ACHIEVED FOR month {MONTH} {YEAR}")
+    5. Searches for previous month's spreadsheet by name
+    6. Copies data from previous month's N10:end to new spreadsheet's G10:end (DPR sheet only)
+    
+    Date Population Rules:
+    - 31-day months: Fill all 31 cells (Jan, Mar, May, Jul, Aug, Oct, Dec)
+    - 30-day months: Fill 30 cells, leave 1 empty (Apr, Jun, Sep, Nov)  
+    - February: Fill 29 cells, leave 2 empty (always 29 days)
+    
+    Args:
+        request: Contains spreadsheet_id (source), project_name, month
+        
+    Returns:
+        Response with new spreadsheet details, date population status, and data copy status
+        
+    Example:
+        - Input: project_name="NEST", month="SEPTEMBER"
+        - Creates: "NEST_SEPTEMBER_2025"
+        - Dates: 01-09-2025 to 30-09-2025 (1 empty cell)
+        - Headers: "Planned for Month of SEPTEMBER 2025", "ACHIEVED FOR month SEPTEMBER 2025"
+        - Searches: "NEST_AUGUST_2025"
+        - Copies: N10:end → G10:end in DPR sheet
+    """
+    try:
+        from datetime import datetime
+        
+        current_year = datetime.now().year
+        
+        # Create new spreadsheet name
+        new_spreadsheet_name = f"{request.project_name.upper()}_{request.month.upper()}_{current_year}"
+        
+        # Step 1: Copy the source spreadsheet
+        copy_result = await mcp_client.copy_spreadsheet(
+            google_id=current_user['google_id'],
+            source_spreadsheet_id=request.spreadsheet_id,
+            new_name=new_spreadsheet_name
+        )
+        
+        if not copy_result.get('success', False):
+            return CopySpreadsheetResponse(
+                success=False,
+                new_spreadsheet_id="",
+                spreadsheet_name=new_spreadsheet_name,
+                data_copied=False,
+                message="Failed to copy spreadsheet",
+                error=copy_result.get('error', 'Unknown error')
+            )
+        
+        new_spreadsheet_id = copy_result['new_spreadsheet_id']
+        
+        # Step 2: Populate monthly dates and headers in the new spreadsheet
+        date_populate_result = await mcp_client.populate_monthly_dates(
+            google_id=current_user['google_id'],
+            spreadsheet_id=new_spreadsheet_id,
+            sheet_name="DPR",  # Assuming DPR sheet
+            month=request.month,
+            year=current_year
+        )
+        
+        date_populate_message = ""
+        if date_populate_result.get('success', False):
+            days_populated = date_populate_result.get('days_populated', 0)
+            empty_cells = date_populate_result.get('empty_cells', 0)
+            date_populate_message = f"Populated {days_populated} days, {empty_cells} empty cells. "
+        else:
+            date_populate_message = f"Date population failed: {date_populate_result.get('error', 'Unknown error')}. "
+        
+        # Step 3: Find previous month's spreadsheet
+        try:
+            previous_month, previous_year = mcp_client.get_previous_month_year(request.month, current_year)
+            previous_spreadsheet_name = f"{request.project_name.upper()}_{previous_month}_{previous_year}"
+            
+            # Search for previous month's spreadsheet
+            search_result = await mcp_client.search_spreadsheet_by_name(
+                google_id=current_user['google_id'],
+                spreadsheet_name=previous_spreadsheet_name
+            )
+            
+            data_copied = False
+            copy_message = "No previous month data to copy"
+            
+            if search_result.get('success', False) and search_result.get('found', False):
+                # Step 3: Copy data from previous month's N10:end to new spreadsheet's G10:end
+                previous_spreadsheet_id = search_result['spreadsheet_id']
+                
+                data_copy_result = await mcp_client.copy_column_data(
+                    google_id=current_user['google_id'],
+                    source_spreadsheet_id=previous_spreadsheet_id,
+                    target_spreadsheet_id=new_spreadsheet_id,
+                    source_sheet="DPR",
+                    target_sheet="DPR",
+                    source_column="N",
+                    target_column="G",
+                    start_row=10
+                )
+                
+                if data_copy_result.get('success', False) and data_copy_result.get('data_copied', False):
+                    data_copied = True
+                    rows_copied = data_copy_result.get('rows_copied', 0)
+                    copy_message = f"Copied {rows_copied} rows from {previous_spreadsheet_name} (N10:end → G10:end)"
+                else:
+                    copy_message = f"Found {previous_spreadsheet_name} but no data to copy or copy failed"
+            else:
+                copy_message = f"Previous month spreadsheet '{previous_spreadsheet_name}' not found"
+                
+        except ValueError as e:
+            copy_message = f"Invalid month name: {request.month}"
+            data_copied = False
+        except Exception as e:
+            copy_message = f"Error processing previous month data: {str(e)}"
+            data_copied = False
+        
+        return CopySpreadsheetResponse(
+            success=True,
+            new_spreadsheet_id=new_spreadsheet_id,
+            spreadsheet_name=new_spreadsheet_name,
+            data_copied=data_copied,
+            message=f"{date_populate_message}{copy_message}"
+        )
+        
+    except Exception as e:
+        return CopySpreadsheetResponse(
+            success=False,
+            new_spreadsheet_id="",
+            spreadsheet_name="",
+            data_copied=False,
+            message="Failed to process request",
+            error=f"Processing error: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn

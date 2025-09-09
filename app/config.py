@@ -14,7 +14,7 @@ GOOGLE_SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.metadata.readonly'  # Added for listing files
+    'https://www.googleapis.com/auth/drive'  # Full Drive access for copying files
 ]
 
 # Supabase Settings
@@ -28,3 +28,12 @@ JWT_EXPIRE_HOURS = 24
 
 # App Settings
 APP_URL = os.getenv("APP_URL")
+
+# Groq API Settings
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+SYSTEM_PROMPT_DPR = """
+according to the given data please provide the below things which is mentioned"""
+
+
+SYSTEM_PROPMT_DLR = """ """
