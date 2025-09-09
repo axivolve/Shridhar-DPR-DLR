@@ -2,8 +2,8 @@ from agno.agent import Agent
 from agno.models.groq import Groq
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv 
-from app.config import SYSTEM_PROMPT_DPR
-from app.models import DPRUpdationResult, DLRUpdationResult
+from app.config import SYSTEM_PROMPT_DPR, SYSTEM_PROMPT_LOGS, SYSTEM_PROPMT_DLR
+from app.models import DPRUpdationResult, DLRUpdationResult, LogQueryResult
 
 def get_support_agent(api_key: str) -> Agent:
     return Agent(
@@ -22,12 +22,22 @@ def get_dlr_support_agent(api_key: str) -> Agent:
     """
     return Agent(
         model=Groq(id="meta-llama/llama-4-scout-17b-16e-instruct", api_key=api_key),
-        system_message="You are a helpful assistant that processes Daily Log Report (DLR) data and provides structured responses.",
+        system_message=SYSTEM_PROMPT_DLR, 
         markdown=False,
         response_model=DLRUpdationResult,
         retries=10,
         add_datetime_to_instructions=True,
     )
+
+def get_logs_support_agent(api_key: str) -> Agent:
+    return Agent(
+        model=Groq(id="meta-llama/llama-4-scout-17b-16e-instruct", api_key=api_key),
+        system_message=SYSTEM_PROMPT_LOGS,
+        markdown=True,
+        response_model=LogQueryResult,
+        retries=10,
+        add_datetime_to_instructions=True 
+)
 
 def prompt_builder(element_data: str, activity_data: str, users_query: str) -> str:
     from datetime import datetime
@@ -152,4 +162,16 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     columns_index: ["S", "T"]  # Column letters
     quantities: [100.0, 100.0]
     feedbacks: ["Fitter done for Villa101 and Mason done for Villa102"]
+    """
+
+def process_logs_query(logs_data: str, users_query: str) -> str:
+    return f"""
+    here is the data of the logs sheet 
+    {logs_data}
+    
+    here is the user's query
+    user's query: {users_query}
+    
+    based on the user's data please provide the answer very precisely 
+    and if the user has asked for the analystics nd all then provide the answer in Tabular format
     """

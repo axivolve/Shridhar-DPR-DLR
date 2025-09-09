@@ -1430,6 +1430,83 @@ class MCPGoogleSheetsClient:
                 "success": False,
                 "error": f"Error copying column data: {str(e)}"
             }
+    
+    async def get_log_data(self, google_id: str, spreadsheet_id: str) -> Dict[str, Any]:
+        """
+        Retrieve all log data from the LOG sheet.
+        Returns data as list of lists (without headers) for LLM processing.
+        
+        Args:
+            google_id: User's Google ID
+            spreadsheet_id: Google Sheets spreadsheet ID
+        
+        Returns:
+            Dict with log data as list of lists
+        """
+        try:
+            # Get user tokens from database
+            tokens = await get_user_tokens(google_id)
+            if not tokens:
+                return {"success": False, "error": "User not authenticated", "data": [], "logs_processed": 0}
+            
+            # Create credentials
+            credentials = Credentials(
+                token=tokens['access_token'],
+                refresh_token=tokens['refresh_token'],
+                client_id=GOOGLE_CLIENT_ID,
+                client_secret=GOOGLE_CLIENT_SECRET,
+                token_uri="https://oauth2.googleapis.com/token",
+                scopes=GOOGLE_SCOPES
+            )
+            
+            # Refresh token if needed
+            if credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+                # Update tokens in database
+                from app.database import save_user
+                await save_user({
+                    'google_id': google_id,
+                    'access_token': credentials.token,
+                    'refresh_token': credentials.refresh_token
+                })
+            
+            # Build sheets service
+            service = build('sheets', 'v4', credentials=credentials)
+            
+            # Get all log data (skip header row)
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range='LOG!A2:K1000'  # Start from row 2 to skip headers, up to 1000 rows
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            # Filter out empty rows and convert to proper format
+            log_data = []
+            for row in values:
+                # Ensure row has all 11 columns, pad with empty strings if needed
+                while len(row) < 11:
+                    row.append('')
+                
+                # Only add non-empty rows (at least timestamp should exist)
+                if row[0].strip():  # Check if timestamp exists
+                    log_data.append(row)
+            
+            return {
+                "success": True,
+                "spreadsheet_id": spreadsheet_id,
+                "data": log_data,
+                "logs_processed": len(log_data)
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Error retrieving log data: {str(e)}",
+                "spreadsheet_id": spreadsheet_id,
+                "data": [],
+                "logs_processed": 0
+            }
 
 # Global MCP client instance
 mcp_client = MCPGoogleSheetsClient()

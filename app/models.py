@@ -141,3 +141,14 @@ class UpdatedDLRResponse(BaseModel):
     row_data_summary: str
     llm_result: Optional[DLRUpdationResult] = None
     error: Optional[str] = None
+
+class AnalyzeLogsRequest(BaseModel):
+    users_query: str
+
+class AnalyzeLogsResponse(BaseModel):
+    success: bool
+    sheet_id: str
+    logs_processed: int
+    query: str
+    feedback: str
+    error: Optional[str] = None

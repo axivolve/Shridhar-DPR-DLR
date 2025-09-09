@@ -9,9 +9,9 @@ from app.google_auth import (
     write_hello_world_to_sheet,
     list_google_sheets
 )
-from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse
+from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse, AnalyzeLogsRequest, AnalyzeLogsResponse
 from app.mcp_client import mcp_client
-from app.llm_response import get_support_agent, get_dlr_support_agent, prompt_builder, prompt_builder_for_dlr_updation
+from app.llm_response import get_support_agent, get_dlr_support_agent, get_logs_support_agent, prompt_builder, prompt_builder_for_dlr_updation
 from app.fuzzy_matching import get_best_fuzzy_matches
 from app.config import GROQ_API_KEY
 from typing import Optional
@@ -72,8 +72,9 @@ async def home():
                     <li><strong>GET /mcp/sheet-data/{sheet_id}</strong> - Get sheet data using MCP</li>
                     <li><strong>GET /mcp/column-data/{sheet_id}</strong> - Get entire column data from a starting cell (e.g., C3)</li>
                     <li><strong>GET /mcp/row-data/{sheet_id}</strong> - Get row data with column names as keys (e.g., 4A:4D)</li>
-                    <li><strong>POST /update_dpr/{sheet_id}</strong> - Process DPR updates using AI analysis</li>
+                    <li><strong>POST /update-dpr/{sheet_id}</strong> - Process DPR updates using AI analysis</li>
                     <li><strong>POST /update-dlr/{sheet_id}</strong> - Process DLR updates with fuzzy matching and AI analysis</li>
+                    <li><strong>POST /analyze-logs/{sheet_id}</strong> - Analyze LOG sheet data using AI for insights and patterns</li>
                     <li><strong>POST /new-spreadsheet</strong> - Copy spreadsheet with monthly naming and previous month data transfer</li>
                     <li><strong>POST /mcp/analyze-sheet/{sheet_id}</strong> - AI analysis of sheet data</li>
                 </ul>
@@ -929,6 +930,120 @@ async def new_spreadsheet_endpoint(
             spreadsheet_name="",
             data_copied=False,
             message="Failed to process request",
+            error=f"Processing error: {str(e)}"
+        )
+
+@app.post("/analyze-logs/{sheet_id}", response_model=AnalyzeLogsResponse)
+async def analyze_logs(
+    sheet_id: str,
+    request: AnalyzeLogsRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Analyze log data from the LOG sheet using LLM.
+    
+    This endpoint:
+    1. Retrieves all log data from the LOG sheet (without headers)
+    2. Formats the data as list of lists for LLM processing
+    3. Processes user query through LLM agent for log analysis
+    4. Returns LLM feedback based on log patterns and user query
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        request: Contains users_query for log analysis
+        
+    Returns:
+        Structured response with LLM analysis of the logs
+        
+    Log Data Format (each row as list):
+        [timestamp, site_engineer, phone, row, column, value, type, operation_date, user_query, feedback, sheet_name]
+        
+    Example Queries:
+        - "Show me all updates by John Doe last week"
+        - "What are the most common operations?"
+        - "Give me analytics on DPR vs DLR updates"
+        - "Show updates for Villa 101"
+    """
+    try:
+        # Step 1: Get log data from LOG sheet
+        log_result = await mcp_client.get_log_data(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id
+        )
+        
+        if not log_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get log data: {log_result.get('error', 'Unknown error')}")
+        
+        log_data = log_result.get('data', [])
+        logs_processed = log_result.get('logs_processed', 0)
+        
+        if not log_data:
+            return AnalyzeLogsResponse(
+                success=True,
+                sheet_id=sheet_id,
+                logs_processed=0,
+                query=request.users_query,
+                feedback="No log data found in this spreadsheet."
+            )
+        
+        # Step 2: Format log data for LLM (as string representation of list of lists)
+        formatted_log_data = str(log_data)
+        
+        # Step 3: Create prompt for LLM
+        prompt = f"""
+        USER QUERY: {request.users_query}
+        
+        LOG DATA:
+        {formatted_log_data}
+        
+        Please analyze the log data and provide a comprehensive answer to the user's query.
+        Focus on patterns, trends, specific data requested, and provide insights based on the log entries.
+        """
+        
+        # Step 4: Process through LLM agent
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        
+        try:
+            agent = get_logs_support_agent(GROQ_API_KEY)
+            run_response = agent.run(prompt)
+            
+            # Extract the actual result from RunResponse
+            if hasattr(run_response, 'content'):
+                llm_response = run_response.content
+            elif hasattr(run_response, 'data'):
+                llm_response = run_response.data
+            else:
+                llm_response = run_response
+                
+            # Extract feedback from LogQueryResult
+            if hasattr(llm_response, 'result'):
+                feedback = llm_response.result
+            elif isinstance(llm_response, dict) and 'result' in llm_response:
+                feedback = llm_response['result']
+            else:
+                feedback = str(llm_response)
+                    
+        except Exception as llm_error:
+            raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
+        
+        return AnalyzeLogsResponse(
+            success=True,
+            sheet_id=sheet_id,
+            logs_processed=logs_processed,
+            query=request.users_query,
+            feedback=feedback
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        return AnalyzeLogsResponse(
+            success=False,
+            sheet_id=sheet_id,
+            logs_processed=0,
+            query=request.users_query,
+            feedback="",
             error=f"Processing error: {str(e)}"
         )
 
