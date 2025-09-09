@@ -82,7 +82,6 @@ class LogQueryResult(BaseModel):
 
 class UpdatedSheetRequest(BaseModel):
     site_engineer_name: str
-    sheet_name: str
     phone_number: str
     users_query: str
 

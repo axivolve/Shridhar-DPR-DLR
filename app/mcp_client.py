@@ -800,7 +800,7 @@ class MCPGoogleSheetsClient:
                 "results": []
             }
     
-    async def log_update_operation(self, google_id: str, spreadsheet_id: str, site_engineer_name: str, phone_number: str, updated_row_index: str, updated_column_index: str, updated_value: str, updation_type: str, columns: str, user_query: str, feedback: str, operation_date: str = None) -> Dict[str, Any]:
+    async def log_update_operation(self, google_id: str, spreadsheet_id: str, site_engineer_name: str, phone_number: str, updated_row_index: str, updated_column_index: str, updated_value: str, updation_type: str, columns: str, user_query: str, feedback: str, sheet_name: str, operation_date: str = None) -> Dict[str, Any]:
         """
         Log update operations to a "LOG" sheet within the spreadsheet.
         Creates the LOG sheet if it doesn't exist.
@@ -882,10 +882,10 @@ class MCPGoogleSheetsClient:
                     ).execute()
                     
                     # Add headers to the new LOG sheet
-                    headers = [['Timestamp', 'Site Engineer', 'Phone Number', 'Row', 'Column', 'Value', 'Type', 'Operation Date', 'User Query', 'Feedback']]
+                    headers = [['Timestamp', 'Site Engineer', 'Phone Number', 'Row', 'Column', 'Value', 'Type', 'Operation Date', 'User Query', 'Feedback', 'Sheet Name']]
                     service.spreadsheets().values().update(
                         spreadsheetId=spreadsheet_id,
-                        range='LOG!A1:J1',
+                        range='LOG!A1:K1',
                         valueInputOption='USER_ENTERED',
                         body={'values': headers}
                     ).execute()
@@ -914,7 +914,8 @@ class MCPGoogleSheetsClient:
                 str(updation_type),
                 str(operation_date),
                 str(user_query),
-                str(feedback)
+                str(feedback),
+                str(sheet_name)
             ]
             
             # Find next available row in LOG sheet
@@ -933,7 +934,7 @@ class MCPGoogleSheetsClient:
                 next_row = 2
             
             # Add log entry
-            log_range = f'LOG!A{next_row}:J{next_row}'
+            log_range = f'LOG!A{next_row}:K{next_row}'
             result = service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id,
                 range=log_range,

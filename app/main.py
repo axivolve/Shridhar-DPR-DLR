@@ -309,7 +309,7 @@ async def get_row_data_mcp(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MCP row data error: {str(e)}")
 
-@app.post("/update_dpr/{sheet_id}", response_model=UpdatedSheetResponse)
+@app.post("/update-dpr/{sheet_id}", response_model=UpdatedSheetResponse)
 async def update_dpr(
     sheet_id: str,
     request: UpdatedSheetRequest,
@@ -330,7 +330,7 @@ async def update_dpr(
     
     Args:
         sheet_id: Google Sheets spreadsheet ID
-        request: Contains site_engineer_name, phone_number, sheet_name, users_query
+        request: Contains site_engineer_name, phone_number, users_query
         
     Returns:
         Structured response with LLM analysis, update results, and agent feedback
@@ -346,7 +346,7 @@ async def update_dpr(
         element_result = await mcp_client.get_column_data_with_user_auth(
             google_id=current_user['google_id'],
             spreadsheet_id=sheet_id,
-            sheet=request.sheet_name,
+            sheet="DPR",
             cell_reference="B10"
         )
         
@@ -357,7 +357,7 @@ async def update_dpr(
         activity_result = await mcp_client.get_sheet_data_with_user_auth(
             google_id=current_user['google_id'],
             spreadsheet_id=sheet_id,
-            sheet=request.sheet_name,
+            sheet="DPR",
             range_name="C10:E96"
         )
         
@@ -445,7 +445,7 @@ async def update_dpr(
                 date_mapping_result = await mcp_client.get_row_values_from_range(
                     google_id=current_user['google_id'],
                     spreadsheet_id=sheet_id,
-                    sheet=request.sheet_name,
+                    sheet="DPR",
                     range_name="8AV:8BZ"
                 )
                 
@@ -488,7 +488,7 @@ async def update_dpr(
                 update_result = await mcp_client.update_cells_with_operations(
                     google_id=current_user['google_id'],
                     spreadsheet_id=sheet_id,
-                    sheet=request.sheet_name,
+                    sheet="DPR",
                     cell_list=cell_list,
                     updation_list=updation_list,
                     type_list=type_list
@@ -517,6 +517,7 @@ async def update_dpr(
                             columns=target_column,
                             user_query=request.users_query,
                             feedback=llm_response.agent_feedback[0] if llm_response.agent_feedback else "Update completed",
+                            sheet_name="DPR",  # Always use DPR for this endpoint
                             operation_date=llm_response.operation_date
                         )
                 
@@ -538,7 +539,7 @@ async def update_dpr(
             site_engineer_name=request.site_engineer_name,
             phone_number=request.phone_number,
             sheet_id=sheet_id,
-            sheet_name=request.sheet_name,
+            sheet_name="DPR",
             users_query=request.users_query,
             element_data_summary=element_summary,
             activity_data_summary=f"{activity_summary}. {update_summary}",
@@ -553,7 +554,7 @@ async def update_dpr(
             site_engineer_name=request.site_engineer_name,
             phone_number=request.phone_number,
             sheet_id=sheet_id,
-            sheet_name=request.sheet_name,
+            sheet_name="DPR",
             users_query=request.users_query,
             element_data_summary="Failed to retrieve",
             activity_data_summary="Failed to retrieve", 
@@ -716,18 +717,37 @@ async def update_dlr(
                 # Step 7: Log each update operation
                 for i, result in enumerate(update_result.get('results', [])):
                     if result.get('success', False):
+                        # Fix row/column values for logging - use the corrected cell reference
+                        col_val = llm_response.columns_index[i]
+                        row_val = llm_response.row_index[i]
+                        
+                        # Determine correct row and column for logging
+                        if col_val.isdigit() and not row_val.isdigit():
+                            # LLM returned them swapped - correct for logging
+                            log_row_index = col_val  # The numeric value is the row
+                            log_column_index = row_val  # The letter value is the column
+                        elif not col_val.isdigit() and row_val.isdigit():
+                            # Correct format
+                            log_row_index = row_val  # The numeric value is the row
+                            log_column_index = col_val  # The letter value is the column
+                        else:
+                            # Fallback - use as provided
+                            log_row_index = row_val
+                            log_column_index = col_val
+                        
                         await mcp_client.log_update_operation(
                             google_id=current_user['google_id'],
                             spreadsheet_id=sheet_id,
                             site_engineer_name=request.site_engineer_name,
                             phone_number=request.phone_number,
-                            updated_row_index=llm_response.row_index[i],
-                            updated_column_index=llm_response.columns_index[i],
+                            updated_row_index=log_row_index,  # Corrected row (numeric)
+                            updated_column_index=log_column_index,  # Corrected column (letter)
                             updated_value=str(result.get('new_value', updation_list[i])),
                             updation_type=type_list[i],
-                            columns=llm_response.columns_index[i],
+                            columns=log_column_index,
                             user_query=request.users_query,
                             feedback=llm_response.feedbacks[0] if llm_response.feedbacks else "DLR update completed",
+                            sheet_name="DLR",  # Add sheet name
                             operation_date=""  # No date handling for DLR
                         )
                 
