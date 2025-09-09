@@ -12,3 +12,4 @@ pydantic
 python-dotenv
 mcp
 httpx
+rapidfuzz

@@ -265,6 +265,121 @@ class MCPGoogleSheetsClient:
                 "total_rows_processed": 0,
                 "stopped_due_to_empty_rows": False
             }
+
+    async def get_col_values_from_range_real_indexing(self, google_id: str, spreadsheet_id: str, sheet: str, cell_reference: str) -> Dict[str, Any]:
+        """
+        Get all data from a specific column starting from a given row using user's OAuth credentials.
+        Returns data with REAL Google Sheets row indices (not 0-based).
+        Stops when 100 consecutive empty rows are found.
+        
+        Args:
+            google_id: User's Google ID
+            spreadsheet_id: Google Sheets spreadsheet ID
+            sheet: Sheet name (e.g., "Sheet1")
+            cell_reference: Starting cell reference (e.g., "C3")
+        
+        Returns:
+            Dict with real indexed data: {real_row_number: [value], ...}
+            Example: {10: ["Carpenter"], 11: ["Mason"], 15: ["Welder"]}
+        """
+        try:
+            # Get user tokens from database
+            tokens = await get_user_tokens(google_id)
+            if not tokens:
+                return {"error": "User not authenticated"}
+            
+            # Parse cell reference to get column and starting row
+            column, start_row = parse_cell_reference(cell_reference)
+            
+            # Create credentials
+            credentials = Credentials(
+                token=tokens['access_token'],
+                refresh_token=tokens['refresh_token'],
+                client_id=GOOGLE_CLIENT_ID,
+                client_secret=GOOGLE_CLIENT_SECRET,
+                token_uri="https://oauth2.googleapis.com/token",
+                scopes=GOOGLE_SCOPES
+            )
+            
+            # Refresh token if needed
+            if credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+                # Update tokens in database
+                from app.database import save_user
+                await save_user({
+                    'google_id': google_id,
+                    'access_token': credentials.token,
+                    'refresh_token': credentials.refresh_token
+                })
+            
+            # Build sheets service
+            service = build('sheets', 'v4', credentials=credentials)
+            
+            # Read a large range to capture all data (we'll process it to find the actual end)
+            # Using 1000 rows should be sufficient for most use cases
+            end_row = start_row + 999  # Read up to 1000 rows
+            range_to_read = f"{column}{start_row}:{column}{end_row}"
+            
+            # Get sheet data
+            result = service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=f"{sheet}!{range_to_read}"
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            # Process data with 100 consecutive empty row stopping logic
+            # Keep REAL Google Sheets row indices (not 0-based)
+            indexed_data = {}
+            consecutive_empty_count = 0
+            total_processed = 0
+            
+            for i, row_data in enumerate(values):
+                real_row_number = start_row + i  # This is the actual Google Sheets row number
+                total_processed += 1
+                
+                # Check if row is empty (no data or only empty/whitespace strings)
+                is_empty = not row_data or not any(cell.strip() for cell in row_data if isinstance(cell, str))
+                
+                if is_empty:
+                    consecutive_empty_count += 1
+                    # Stop if we hit 100 consecutive empty rows
+                    if consecutive_empty_count >= 100:
+                        break
+                else:
+                    # Reset counter when we find non-empty data
+                    consecutive_empty_count = 0
+                    # Add non-empty row to results with REAL row number
+                    indexed_data[real_row_number] = row_data
+            
+            return {
+                "success": True,
+                "spreadsheet_id": spreadsheet_id,
+                "sheet": sheet,
+                "cell_reference": cell_reference,
+                "column": column,
+                "start_row": start_row,
+                "data": indexed_data,  # This contains real Google Sheets row numbers as keys
+                "row_count": len(indexed_data),
+                "total_rows_processed": total_processed,
+                "stopped_due_to_empty_rows": consecutive_empty_count >= 100
+            }
+            
+        except Exception as e:
+            column, start_row = parse_cell_reference(cell_reference)
+            return {
+                "success": False,
+                "error": f"Error getting column data with real indexing: {str(e)}",
+                "spreadsheet_id": spreadsheet_id,
+                "sheet": sheet,
+                "cell_reference": cell_reference,
+                "column": column,
+                "start_row": start_row,
+                "data": {},
+                "row_count": 0,
+                "total_rows_processed": 0,
+                "stopped_due_to_empty_rows": False
+            }
     
     async def update_sheet_data(self, google_id: str, spreadsheet_id: str, sheet: str, range_name: str, values: list) -> Dict[str, Any]:
         """

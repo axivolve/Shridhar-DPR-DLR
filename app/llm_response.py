@@ -3,7 +3,7 @@ from agno.models.groq import Groq
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv 
 from app.config import SYSTEM_PROMPT_DPR
-from app.models import DPRUpdationResult
+from app.models import DPRUpdationResult, DLRUpdationResult
 
 def get_support_agent(api_key: str) -> Agent:
     return Agent(
@@ -11,6 +11,20 @@ def get_support_agent(api_key: str) -> Agent:
         system_message=SYSTEM_PROMPT_DPR,
         markdown=False,
         response_model=DPRUpdationResult,
+        retries=10,
+        add_datetime_to_instructions=True,
+    )
+
+def get_dlr_support_agent(api_key: str) -> Agent:
+    """
+    Agent specifically configured for DLR updates.
+    Returns DLRUpdationResult instead of DPRUpdationResult.
+    """
+    return Agent(
+        model=Groq(id="meta-llama/llama-4-scout-17b-16e-instruct", api_key=api_key),
+        system_message="You are a helpful assistant that processes Daily Log Report (DLR) data and provides structured responses.",
+        markdown=False,
+        response_model=DLRUpdationResult,
         retries=10,
         add_datetime_to_instructions=True,
     )
@@ -100,3 +114,42 @@ operation_date: "{today_date}"
 these are the examples which i'm getting the output of the llm so you should give the output in the same manner
 """
     
+
+def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query: str) -> str:
+    return f"""
+    here is the data of the sheet which is associated with it's indexing
+    here is the data from column {column_name}
+    here is the data from row {row_data}
+    
+    aand here is the user's query
+    user's query: {users_query}
+    
+    could u please find and return the best fit row and column index and quantity for the user's query
+    
+    IMPORTANT: Return the data in the exact format below:
+    row_index: List[str] = Field(description="list of the row numbers (numeric values like '10', '97')")
+    columns_index: List[str] = Field(description="list of the column letters (letter values like 'D', 'S', 'T')")
+    quantities: List[float] = Field(description="list of the quantities mentioned in the user's query")   
+    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just a single feedback for whole query")
+    
+    CELL REFERENCE FORMAT:
+    - columns_index should contain LETTERS (like "D", "S", "T", "AA", "AB")
+    - row_index should contain NUMBERS (like "10", "14", "97")
+    - Final cell will be: columns_index + row_index (like "D14", "S10", "T97")
+    
+    make sure the feedbacks length should be 1 every time for whole query
+    
+    example :
+    User: "Grinder for Villa 101 has been done for 100 labors"
+    row_index: ["14"]  # Row number
+    columns_index: ["D"]  # Column letter  
+    quantities: [100.0]
+    feedbacks: ["Grinder done for Villa101 with 100 labors"]
+    
+    example :
+    User: "Fitter done for Villa 101 and Mason done for Villa 102"
+    row_index: ["10", "97"]  # Row numbers
+    columns_index: ["S", "T"]  # Column letters
+    quantities: [100.0, 100.0]
+    feedbacks: ["Fitter done for Villa101 and Mason done for Villa102"]
+    """

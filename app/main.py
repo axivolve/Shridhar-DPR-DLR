@@ -9,9 +9,10 @@ from app.google_auth import (
     write_hello_world_to_sheet,
     list_google_sheets
 )
-from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse
+from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse
 from app.mcp_client import mcp_client
-from app.llm_response import get_support_agent, prompt_builder
+from app.llm_response import get_support_agent, get_dlr_support_agent, prompt_builder, prompt_builder_for_dlr_updation
+from app.fuzzy_matching import get_best_fuzzy_matches
 from app.config import GROQ_API_KEY
 from typing import Optional
 
@@ -71,8 +72,9 @@ async def home():
                     <li><strong>GET /mcp/sheet-data/{sheet_id}</strong> - Get sheet data using MCP</li>
                     <li><strong>GET /mcp/column-data/{sheet_id}</strong> - Get entire column data from a starting cell (e.g., C3)</li>
                     <li><strong>GET /mcp/row-data/{sheet_id}</strong> - Get row data with column names as keys (e.g., 4A:4D)</li>
-                    <li><strong>POST /updated_sheet/{sheet_id}</strong> - Process DPR updates using AI analysis</li>
-                    <li><strong>POST /copy-spreadsheet</strong> - Copy spreadsheet with monthly naming and previous month data transfer</li>
+                    <li><strong>POST /update_dpr/{sheet_id}</strong> - Process DPR updates using AI analysis</li>
+                    <li><strong>POST /update-dlr/{sheet_id}</strong> - Process DLR updates with fuzzy matching and AI analysis</li>
+                    <li><strong>POST /new-spreadsheet</strong> - Copy spreadsheet with monthly naming and previous month data transfer</li>
                     <li><strong>POST /mcp/analyze-sheet/{sheet_id}</strong> - AI analysis of sheet data</li>
                 </ul>
                 
@@ -555,6 +557,215 @@ async def update_dpr(
             users_query=request.users_query,
             element_data_summary="Failed to retrieve",
             activity_data_summary="Failed to retrieve", 
+            llm_result=None,
+            error=f"Processing error: {str(e)}"
+        )
+
+@app.post("/update-dlr/{sheet_id}", response_model=UpdatedDLRResponse)
+async def update_dlr(
+    sheet_id: str,
+    request: UpdatedDLRRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Process DLR sheet data through LLM for updates and perform actual cell updates.
+    
+    This endpoint:
+    1. Gets column data from 8A in DLR sheet using real indexing
+    2. Gets row data from range 6A:6ZZ in DLR sheet
+    3. Runs fuzzy matching on both datasets separately using user query
+    4. Combines fuzzy matching results with user query using prompt builder for DLR
+    5. Processes through LLM for structured analysis
+    6. Performs direct cell updates using columns_index[i] + row_index[i] pattern
+    7. Logs all update operations to LOG sheet
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        request: Contains site_engineer_name, phone_number, users_query
+        
+    Returns:
+        Structured response with LLM analysis, update results, and feedback
+        
+    Example Flow:
+        - User: "Grinder for Villa 101 has been done for 100 labors"
+        - LLM: row_index=["D"], columns_index=["14"], quantities=[100] (may return swapped)
+        - System: Auto-detects correct format → Updates cell D14 with +100 (add operation)
+        - Logs: Records operations in LOG sheet with all details
+    """
+    try:
+        # Step 1: Get column data from 8A using real indexing
+        column_result = await mcp_client.get_col_values_from_range_real_indexing(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet="DLR",
+            cell_reference="8A"
+        )
+        
+        if not column_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get column data: {column_result.get('error', 'Unknown error')}")
+        
+        # Step 2: Get row data from range 6A:6ZZ
+        row_result = await mcp_client.get_row_values_from_range(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet="DLR",
+            range_name="6A:6ZZ"
+        )
+        
+        if not row_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get row data: {row_result.get('error', 'Unknown error')}")
+        
+        # Step 3: Run fuzzy matching on both datasets separately
+        
+        # Fuzzy matching for column data (convert to format expected by fuzzy matching)
+        column_data = column_result.get('data', {})
+        column_search_dict = {}
+        for row_num, row_data in column_data.items():
+            if row_data and len(row_data) > 0:
+                column_search_dict[str(row_num)] = row_data[0]  # Take first element from list
+        
+        column_fuzzy_matches = get_best_fuzzy_matches(request.users_query, column_search_dict, limit=10)
+        
+        # Fuzzy matching for row data 
+        row_data = row_result.get('data', {})
+        row_fuzzy_matches = get_best_fuzzy_matches(request.users_query, row_data, limit=10)
+        
+        # Step 4: Build prompt using fuzzy matching results
+        column_matches_str = str(column_fuzzy_matches)
+        row_matches_str = str(row_fuzzy_matches)
+        
+        prompt = prompt_builder_for_dlr_updation(
+            column_name=column_matches_str,
+            row_data=row_matches_str,
+            users_query=request.users_query
+        )
+        
+        # Step 5: Get LLM agent and process the prompt
+        if not GROQ_API_KEY:
+            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        
+        try:
+            agent = get_dlr_support_agent(GROQ_API_KEY)
+            run_response = agent.run(prompt)
+            
+            # Extract the actual result from RunResponse
+            if hasattr(run_response, 'content'):
+                llm_response = run_response.content
+            elif hasattr(run_response, 'data'):
+                llm_response = run_response.data
+            else:
+                llm_response = run_response
+                
+            # Validate that we have a proper DLRUpdationResult
+            if not isinstance(llm_response, DLRUpdationResult):
+                if isinstance(llm_response, dict):
+                    llm_response = DLRUpdationResult(**llm_response)
+                else:
+                    raise ValueError(f"Invalid LLM response type: {type(llm_response)}")
+                    
+        except Exception as llm_error:
+            raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
+        
+        # Step 6: Perform actual cell updates using direct column + row pattern
+        update_summary = "No updates performed"
+        if (llm_response.row_index and llm_response.columns_index and llm_response.quantities):
+            
+            try:
+                # Prepare cell updates using columns_index[i] + row_index[i] pattern
+                cell_list = []
+                updation_list = []
+                type_list = []
+                
+                for i in range(len(llm_response.row_index)):
+                    # Direct cell reference: columns_index[i] + row_index[i]
+                    # Note: LLM might return them in wrong order, so we need to check which is numeric
+                    col_val = llm_response.columns_index[i]
+                    row_val = llm_response.row_index[i]
+                    
+                    # Determine correct cell reference - column should be letters, row should be numbers
+                    if col_val.isdigit() and not row_val.isdigit():
+                        # LLM returned them swapped: columns_index is numeric, row_index is letters
+                        # Correct format: row_val (letters) + col_val (numbers) = like "D14"
+                        cell_ref = f"{row_val}{col_val}"
+                    elif not col_val.isdigit() and row_val.isdigit():
+                        # Correct format: columns_index is letters, row_index is numbers = like "S10"
+                        cell_ref = f"{col_val}{row_val}"
+                    else:
+                        # Fallback to original format if unclear
+                        cell_ref = f"{col_val}{row_val}"
+                    
+                    cell_list.append(cell_ref)
+                    
+                    # Use quantity directly with add operation for DLR
+                    updation_list.append(float(llm_response.quantities[i]))
+                    type_list.append("add")  # Use add operation for DLR to increment values
+                
+                # Perform batch cell updates
+                update_result = await mcp_client.update_cells_with_operations(
+                    google_id=current_user['google_id'],
+                    spreadsheet_id=sheet_id,
+                    sheet="DLR",
+                    cell_list=cell_list,
+                    updation_list=updation_list,
+                    type_list=type_list
+                )
+                
+                if not update_result.get('success', False):
+                    raise HTTPException(status_code=500, detail=f"Failed to update cells: {update_result.get('error', 'Unknown error')}")
+                
+                # Step 7: Log each update operation
+                for i, result in enumerate(update_result.get('results', [])):
+                    if result.get('success', False):
+                        await mcp_client.log_update_operation(
+                            google_id=current_user['google_id'],
+                            spreadsheet_id=sheet_id,
+                            site_engineer_name=request.site_engineer_name,
+                            phone_number=request.phone_number,
+                            updated_row_index=llm_response.row_index[i],
+                            updated_column_index=llm_response.columns_index[i],
+                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updation_type=type_list[i],
+                            columns=llm_response.columns_index[i],
+                            user_query=request.users_query,
+                            feedback=llm_response.feedbacks[0] if llm_response.feedbacks else "DLR update completed",
+                            operation_date=""  # No date handling for DLR
+                        )
+                
+                successful_updates = update_result.get('successful_operations', 0)
+                total_updates = update_result.get('total_operations', 0)
+                update_summary = f"Updated {successful_updates}/{total_updates} cells successfully"
+                
+            except HTTPException as e:
+                raise e
+            except Exception as update_error:
+                raise HTTPException(status_code=500, detail=f"Cell update error: {str(update_error)}")
+        
+        # Create summary strings for the response
+        column_summary = f"Column data from 8A (real indexing): {len(column_data)} rows retrieved. Fuzzy matches: {len(column_fuzzy_matches)}"
+        row_summary = f"Row data from 6A:6ZZ: {row_result.get('column_count', 0)} columns retrieved. Fuzzy matches: {len(row_fuzzy_matches)}. {update_summary}"
+        
+        return UpdatedDLRResponse(
+            success=True,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            users_query=request.users_query,
+            column_data_summary=column_summary,
+            row_data_summary=row_summary,
+            llm_result=llm_response
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        return UpdatedDLRResponse(
+            success=False,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            users_query=request.users_query,
+            column_data_summary="Failed to retrieve",
+            row_data_summary="Failed to retrieve", 
             llm_result=None,
             error=f"Processing error: {str(e)}"
         )
