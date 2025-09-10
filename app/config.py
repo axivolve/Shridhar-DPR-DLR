@@ -38,7 +38,7 @@ according to the given data please provide the below things which is mentioned""
 SYSTEM_PROPMT_DLR = """
 you are a helpful assistant that processes Daily Log Report (DLR) data and provides 
 structured responses.and if the user has asked for the analystics nd all then provide 
-the answer in Tabular format"""
+t"""
 
 SYSTEM_PROMPT_LOGS = """
 You are a helpful assistant that processes log data and provides precise, accurate answers.

@@ -387,12 +387,20 @@ async def update_dpr(
         
         activity_fuzzy_matches = get_best_fuzzy_matches(request.users_query, activity_search_dict, limit=10)
         
-        # Convert fuzzy-matched activity data to 0-based indexing for LLM compatibility
+        # Create a mapping from real row numbers to their original 0-based index
+        real_row_to_zero_index_map = {row_num: i for i, row_num in enumerate(original_activity_data.keys())}
+        
+        # Build the activity data for the LLM, preserving the original 0-based index
         zero_indexed_activity_data = {}
-        for index, (row_key, activity_value) in enumerate(activity_fuzzy_matches.items()):
-            # Get the original row data for this matched row, keeping original structure
-            original_row_data = original_activity_data.get(int(row_key), [])
-            zero_indexed_activity_data[index] = original_row_data
+        for row_key_str in activity_fuzzy_matches.keys():
+            row_key_int = int(row_key_str)
+            original_zero_index = real_row_to_zero_index_map.get(row_key_int)
+            
+            if original_zero_index is not None:
+                # Get the original row data for this matched row
+                original_row_data = original_activity_data.get(row_key_int)
+                if original_row_data:
+                    zero_indexed_activity_data[original_zero_index] = original_row_data
         
         # Convert data to string format for prompt using both fuzzy matched datasets
         element_data_str = str(element_fuzzy_matches)
@@ -411,6 +419,10 @@ async def update_dpr(
             users_query=request.users_query
         )
         
+        print("_" * 100)
+        print("prompt",prompt)
+        print("_" * 100)
+        
         # Get LLM agent and process the prompt
         if not GROQ_API_KEY:
             raise HTTPException(status_code=500, detail="Groq API key not configured")
@@ -418,6 +430,10 @@ async def update_dpr(
         try:
             agent = get_support_agent(GROQ_API_KEY)
             run_response = agent.run(prompt)
+            
+            print("_" * 100)
+            print("run response",run_response)
+            print("_" * 100)
             
             # Extract the actual result from RunResponse
             # The agent should return a DPRUpdationResult directly, but it's wrapped in RunResponse
@@ -533,6 +549,7 @@ async def update_dpr(
                         activity_idx = int(llm_response.activity_index[i])
                         calculated_row = element_idx + activity_idx
                         
+                        
                         await mcp_client.log_update_operation(
                             google_id=current_user['google_id'],
                             spreadsheet_id=sheet_id,
@@ -546,7 +563,7 @@ async def update_dpr(
                             user_query=request.users_query,
                             feedback=llm_response.agent_feedback[0] if llm_response.agent_feedback else "Update completed",
                             sheet_name="DPR",  # Always use DPR for this endpoint
-                            operation_date=llm_response.operation_date
+                            operation_date=llm_response.operation_date,
                         )
                 
                 successful_updates = update_result.get('successful_operations', 0)
@@ -663,11 +680,21 @@ async def update_dlr(
         column_matches_str = str(column_fuzzy_matches)
         row_matches_str = str(row_fuzzy_matches)
         
+        print("_" * 100)
+        print("column matches string",column_matches_str)
+        print("_" * 100)
+        print("row matches string",row_matches_str)
+        print("_" * 100)
+        
         prompt = prompt_builder_for_dlr_updation(
             column_name=column_matches_str,
             row_data=row_matches_str,
             users_query=request.users_query
         )
+        
+        print("_" * 100)
+        print("prompt",prompt)
+        print("_" * 100)
         
         # Step 5: Get LLM agent and process the prompt
         if not GROQ_API_KEY:
@@ -676,6 +703,10 @@ async def update_dlr(
         try:
             agent = get_dlr_support_agent(GROQ_API_KEY)
             run_response = agent.run(prompt)
+            
+            print("_" * 100)
+            print("run response",run_response)
+            print("_" * 100)
             
             # Extract the actual result from RunResponse
             if hasattr(run_response, 'content'):
@@ -763,6 +794,7 @@ async def update_dlr(
                             log_row_index = row_val
                             log_column_index = col_val
                         
+                        
                         await mcp_client.log_update_operation(
                             google_id=current_user['google_id'],
                             spreadsheet_id=sheet_id,
@@ -776,7 +808,7 @@ async def update_dlr(
                             user_query=request.users_query,
                             feedback=llm_response.feedbacks[0] if llm_response.feedbacks else "DLR update completed",
                             sheet_name="DLR",  # Add sheet name
-                            operation_date=""  # No date handling for DLR
+                            operation_date="",  # No date handling for DLR
                         )
                 
                 successful_updates = update_result.get('successful_operations', 0)
