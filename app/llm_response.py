@@ -2,7 +2,7 @@ from agno.agent import Agent
 from agno.models.groq import Groq
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv 
-from app.config import SYSTEM_PROMPT_DPR, SYSTEM_PROMPT_LOGS, SYSTEM_PROPMT_DLR
+from app.config import SYSTEM_PROMPT_DPR, SYSTEM_PROMPT_LOGS, SYSTEM_PROMPT_DLR
 from app.models import DPRUpdationResult, DLRUpdationResult, LogQueryResult
 
 def get_support_agent(api_key: str) -> Agent:

@@ -84,6 +84,7 @@ class UpdatedSheetRequest(BaseModel):
     site_engineer_name: str
     phone_number: str
     users_query: str
+    groq_api_key: Optional[str] = None
 
 class UpdatedSheetResponse(BaseModel):
     success: bool
@@ -130,6 +131,7 @@ class UpdatedDLRRequest(BaseModel):
     site_engineer_name: str
     phone_number: str
     users_query: str
+    groq_api_key: Optional[str] = None
 
 class UpdatedDLRResponse(BaseModel):
     success: bool
@@ -144,6 +146,7 @@ class UpdatedDLRResponse(BaseModel):
 
 class AnalyzeLogsRequest(BaseModel):
     users_query: str
+    groq_api_key: Optional[str] = None
 
 class AnalyzeLogsResponse(BaseModel):
     success: bool

@@ -35,7 +35,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SYSTEM_PROMPT_DPR = """
 according to the given data please provide the below things which is mentioned"""
 
-SYSTEM_PROPMT_DLR = """
+SYSTEM_PROMPT_DLR = """
 you are a helpful assistant that processes Daily Log Report (DLR) data and provides 
 structured responses.and if the user has asked for the analystics nd all then provide 
 the answer in Tabular format"""

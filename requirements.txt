@@ -13,3 +13,6 @@ python-dotenv
 mcp
 httpx
 rapidfuzz
+agno
+groq
+openai

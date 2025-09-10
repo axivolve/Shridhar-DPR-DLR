@@ -1,7 +1,9 @@
+import os
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from app.google_auth import (
     get_google_auth_url, 
     handle_google_callback, 
@@ -18,11 +20,25 @@ from typing import Optional
 
 app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Security
 security = HTTPBearer()
+
+# Handle OPTIONS requests for CORS
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return {"message": "OK"}
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current user from JWT token"""
@@ -104,70 +120,29 @@ async def callback(code: str):
     result = await handle_google_callback(code)
     
     if not result:
-        raise HTTPException(status_code=400, detail="Authentication failed")
+        # Redirect to frontend with error
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?error=authentication_failed")
     
-    # Return success page with token
-    return HTMLResponse(f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Authentication Success</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
-            .token-box {{ 
-                background: #f5f5f5; padding: 15px; margin: 20px; 
-                border-radius: 5px; word-break: break-all; font-family: monospace;
-            }}
-            .copy-btn {{ 
-                background: #4285f4; color: white; padding: 8px 16px; 
-                border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;
-            }}
-            .feature-box {{
-                background: #e8f5e8; padding: 15px; margin: 20px;
-                border-radius: 5px; border-left: 4px solid #34a853;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>✅ Authentication Successful!</h1>
-        <p>Welcome, {result['user']['name']}!</p>
-        
-        <h3>Your JWT Token:</h3>
-        <div class="token-box" id="token">{result['access_token']}</div>
-        <button class="copy-btn" onclick="copyToken()">Copy Token</button>
-        
-        <div class="feature-box">
-            <h3>🤖 MCP Features Now Available!</h3>
-            <p>You can now use MCP-powered features to analyze and interact with your Google Sheets using AI.</p>
-        </div>
-        
-        <div style="margin-top: 30px;">
-            <h3>Next Steps:</h3>
-            <p>1. Copy the token above</p>
-            <p>2. Visit <a href="/docs">/docs</a> to test the API</p>
-            <p>3. Use Authorization header: <code>Bearer YOUR_TOKEN</code></p>
-            <p>4. Try the new MCP endpoints for advanced sheet analysis!</p>
-        </div>
-        
-        <script>
-            function copyToken() {{
-                const token = document.getElementById('token').textContent;
-                navigator.clipboard.writeText(token).then(() => {{
-                    alert('Token copied to clipboard!');
-                }});
-            }}
-        </script>
-    </body>
-    </html>
-    """)
+    # Redirect to frontend with success and token
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    # URL encode the user name to handle special characters
+    import urllib.parse
+    encoded_user = urllib.parse.quote(result['user']['name'])
+    return RedirectResponse(url=f"{frontend_url}/auth/callback?code={code}&token={result['access_token']}&user={encoded_user}")
 
 @app.get("/user/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """Get current user information"""
     return {
+        "id": current_user.get('google_id', ''),
         "google_id": current_user['google_id'],
         "email": current_user['email'],
-        "message": "Token is valid!"
+        "name": current_user.get('name', current_user.get('email', '')),
+        "access_token": "",  # Don't return the actual token
+        "refresh_token": None,
+        "created_at": None,
+        "updated_at": None
     }
 
 @app.get("/documents", response_model=DocumentListResponse)
@@ -385,11 +360,12 @@ async def update_dpr(
         )
         
         # Get LLM agent and process the prompt
-        if not GROQ_API_KEY:
-            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        api_key = request.groq_api_key or GROQ_API_KEY
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Groq API key is required. Please provide your API key in the request or configure it in the backend.")
         
         try:
-            agent = get_support_agent(GROQ_API_KEY)
+            agent = get_support_agent(api_key)
             run_response = agent.run(prompt)
             
             # Extract the actual result from RunResponse
@@ -643,11 +619,12 @@ async def update_dlr(
         )
         
         # Step 5: Get LLM agent and process the prompt
-        if not GROQ_API_KEY:
-            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        api_key = request.groq_api_key or GROQ_API_KEY
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Groq API key is required. Please provide your API key in the request or configure it in the backend.")
         
         try:
-            agent = get_dlr_support_agent(GROQ_API_KEY)
+            agent = get_dlr_support_agent(api_key)
             run_response = agent.run(prompt)
             
             # Extract the actual result from RunResponse
@@ -1001,11 +978,12 @@ async def analyze_logs(
         """
         
         # Step 4: Process through LLM agent
-        if not GROQ_API_KEY:
-            raise HTTPException(status_code=500, detail="Groq API key not configured")
+        api_key = request.groq_api_key or GROQ_API_KEY
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Groq API key is required. Please provide your API key in the request or configure it in the backend.")
         
         try:
-            agent = get_logs_support_agent(GROQ_API_KEY)
+            agent = get_logs_support_agent(api_key)
             run_response = agent.run(prompt)
             
             # Extract the actual result from RunResponse
