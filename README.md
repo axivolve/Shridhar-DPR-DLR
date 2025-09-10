@@ -130,7 +130,7 @@ Shridhar_DPR/
 
 **Process Flow**:
 1. Extract element data from column B (starting row 10) from DPR sheet
-2. Extract activity data from range C10:E96 from DPR sheet
+2. Extract activity data from range C10:D96 from DPR sheet
 3. Build AI prompt with user query and sheet data
 4. Process through LLM for structured analysis with date extraction
 5. Find target column by matching operation date with row 8AV:8BZ
@@ -148,7 +148,7 @@ Shridhar_DPR/
   "sheet_name": "DPR",
   "users_query": "Villa 101 excavation completed 50 cubic meters on 15 September 2025",
   "element_data_summary": "Column B data from row 10: 12 rows retrieved",
-  "activity_data_summary": "Range C10:E96 data (0-indexed): 87 rows retrieved. Updated 2/2 cells successfully",
+  "activity_data_summary": "Range C10:D96 data (0-indexed): 87 rows retrieved. Updated 2/2 cells successfully",
   "llm_result": {
     "element_index": ["10", "15"],
     "activity_index": ["1", "2"],

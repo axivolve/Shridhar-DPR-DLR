@@ -13,11 +13,6 @@ import re
 from datetime import datetime
 from calendar import month_name
 
-# MCP Configuration
-MCP_SERVER_URL = "https://server.smithery.ai/@SmartManoj/google-sheets-mcp/mcp"
-MCP_API_KEY = "fe120802-bad4-4434-bec8-11c2af683af4" 
-MCP_PROFILE = "incredible-firefly-hQK5C9"
-
 def parse_range_start_row(range_name: str) -> int:
     """
     Parse a range string to extract the starting row number.
@@ -64,15 +59,6 @@ def parse_cell_reference(cell_ref: str) -> tuple[str, int]:
         return "A", 1
 
 class MCPGoogleSheetsClient:
-    def __init__(self):
-        self.base_url = MCP_SERVER_URL
-        self.api_key = MCP_API_KEY
-        self.profile = MCP_PROFILE
-    
-    def _get_server_url(self) -> str:
-        """Construct server URL with authentication"""
-        params = {"api_key": self.api_key, "profile": self.profile}
-        return f"{self.base_url}?{urlencode(params)}"
     
     async def get_sheet_data_with_user_auth(self, google_id: str, spreadsheet_id: str, sheet: str, range_name: str) -> Dict[str, Any]:
         """
@@ -201,10 +187,9 @@ class MCPGoogleSheetsClient:
             # Build sheets service
             service = build('sheets', 'v4', credentials=credentials)
             
-            # Read a large range to capture all data (we'll process it to find the actual end)
-            # Using 1000 rows should be sufficient for most use cases
-            end_row = start_row + 999  # Read up to 1000 rows
-            range_to_read = f"{column}{start_row}:{column}{end_row}"
+            # Read the entire column from start_row to the end of the sheet
+            # Using open-ended range to get all data in the column
+            range_to_read = f"{column}{start_row}:{column}"
             
             # Get sheet data
             result = service.spreadsheets().values().get(
@@ -315,10 +300,9 @@ class MCPGoogleSheetsClient:
             # Build sheets service
             service = build('sheets', 'v4', credentials=credentials)
             
-            # Read a large range to capture all data (we'll process it to find the actual end)
-            # Using 1000 rows should be sufficient for most use cases
-            end_row = start_row + 999  # Read up to 1000 rows
-            range_to_read = f"{column}{start_row}:{column}{end_row}"
+            # Read the entire column from start_row to the end of the sheet
+            # Using open-ended range to get all data in the column
+            range_to_read = f"{column}{start_row}:{column}"
             
             # Get sheet data
             result = service.spreadsheets().values().get(

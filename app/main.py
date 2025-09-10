@@ -321,7 +321,7 @@ async def update_dpr(
     
     This endpoint:
     1. Gets element data from column B starting at row 10
-    2. Gets activity data from range C10:E96  
+    2. Gets activity data from range C10:D96  
     3. Combines data with user query using prompt builder
     4. Processes through LLM for structured analysis
     5. Gets date-column mapping from row 8AV:8BZ
@@ -354,28 +354,55 @@ async def update_dpr(
         if not element_result.get('success', False):
             raise HTTPException(status_code=500, detail=f"Failed to get element data: {element_result.get('error', 'Unknown error')}")
         
-        # Get activity data from range C10:E96
+        # Get activity data from range C10:D96
         activity_result = await mcp_client.get_sheet_data_with_user_auth(
             google_id=current_user['google_id'],
             spreadsheet_id=sheet_id,
             sheet="DPR",
-            range_name="C10:E96"
+            range_name="C10:D96"
         )
         
         if not activity_result.get('success', False):
             raise HTTPException(status_code=500, detail=f"Failed to get activity data: {activity_result.get('error', 'Unknown error')}")
         
-        # Convert activity data to 0-based indexing (same as /mcp/sheet-data endpoint)
+        # Apply fuzzy matching to element data for better relevance
+        element_data = element_result.get('data', {})
+        element_search_dict = {}
+        for row_num, row_data in element_data.items():
+            if row_data and len(row_data) > 0:
+                element_search_dict[str(row_num)] = row_data[0]  # Take first element from list
+        
+        element_fuzzy_matches = get_best_fuzzy_matches(request.users_query, element_search_dict, limit=10)
+        
+        # Apply fuzzy matching to activity data for better relevance
         original_activity_data = activity_result.get('data', {})
+        activity_search_dict = {}
+        
+        # Create search dictionary from activity data (combine columns for better matching)
+        for row_num, row_data in original_activity_data.items():
+            if row_data and len(row_data) > 0:
+                # Combine all columns in the row for better fuzzy matching
+                combined_activity = " ".join([str(cell) for cell in row_data if cell])
+                activity_search_dict[str(row_num)] = combined_activity
+        
+        activity_fuzzy_matches = get_best_fuzzy_matches(request.users_query, activity_search_dict, limit=10)
+        
+        # Convert fuzzy-matched activity data to 0-based indexing for LLM compatibility
         zero_indexed_activity_data = {}
+        for index, (row_key, activity_value) in enumerate(activity_fuzzy_matches.items()):
+            # Get the original row data for this matched row, keeping original structure
+            original_row_data = original_activity_data.get(int(row_key), [])
+            zero_indexed_activity_data[index] = original_row_data
         
-        # Convert from actual row numbers to 0-based index for activity data
-        for index, (row_num, row_data) in enumerate(original_activity_data.items()):
-            zero_indexed_activity_data[index] = row_data
-        
-        # Convert data to string format for prompt
-        element_data_str = str(element_result.get('data', {}))
+        # Convert data to string format for prompt using both fuzzy matched datasets
+        element_data_str = str(element_fuzzy_matches)
         activity_data_str = str(zero_indexed_activity_data)
+        
+        print("_" * 100)
+        print("element data string",element_data_str)
+        print("_" * 100)
+        print("activity data string",activity_data_str)
+        print("_" * 100) 
         
         # Build prompt using the prompt builder
         prompt = prompt_builder(
@@ -532,8 +559,8 @@ async def update_dpr(
                 raise HTTPException(status_code=500, detail=f"Cell update error: {str(update_error)}")
         
         # Create summary strings for the response
-        element_summary = f"Column B data from row 10: {len(element_result.get('data', {}))} rows retrieved"
-        activity_summary = f"Range C10:E96 data (0-indexed): {len(zero_indexed_activity_data)} rows retrieved"
+        element_summary = f"Column B data from row 10: {len(element_result.get('data', {}))} rows retrieved. Fuzzy matches: {len(element_fuzzy_matches)}"
+        activity_summary = f"Range C10:D96 data: {len(original_activity_data)} rows retrieved. Fuzzy matches (0-indexed): {len(zero_indexed_activity_data)}"
         
         return UpdatedSheetResponse(
             success=True,

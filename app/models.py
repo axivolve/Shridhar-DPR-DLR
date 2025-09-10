@@ -93,7 +93,7 @@ class UpdatedSheetResponse(BaseModel):
     sheet_name: str
     users_query: str
     element_data_summary: str  # Summary of B10 column data
-    activity_data_summary: str  # Summary of C10:E96 range data
+    activity_data_summary: str  # Summary of C10:D96 range data
     llm_result: Optional[DPRUpdationResult] = None
     error: Optional[str] = None
 

@@ -37,7 +37,7 @@ def get_logs_support_agent(api_key: str) -> Agent:
         response_model=LogQueryResult,
         retries=10,
         add_datetime_to_instructions=True 
-)
+    )
 
 def prompt_builder(element_data: str, activity_data: str, users_query: str) -> str:
     from datetime import datetime
