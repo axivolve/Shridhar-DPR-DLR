@@ -1,4 +1,4 @@
-# DPR-DLR Management Frontend
+# AI Works Tracker Frontend
 
 A modern React frontend application for managing Daily Progress Reports (DPR) and Daily Log Reports (DLR) with AI-powered analysis and Google Sheets integration.
 
@@ -173,4 +173,4 @@ Enable debug logging by opening browser developer tools and checking the console
 
 ## 📄 License
 
-This project is part of the DPR-DLR Management System.
+This project is part of the AI Works Tracker System.

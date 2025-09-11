@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { Key, Eye, EyeOff, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import Modal from './ui/Modal';
+import Button from './ui/Button';
+import Input from './ui/Input';
+import { Card, CardContent } from './ui/Card';
 
 const ApiKeyModal = ({ isOpen, onClose, onSave }) => {
   const [apiKey, setApiKey] = useState('');
@@ -8,13 +12,18 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }) => {
   const [error, setError] = useState('');
   const [isValid, setIsValid] = useState(false);
 
-  // Load existing API key when modal opens
+  // Load existing API key when modal opens, or use default key
   React.useEffect(() => {
     if (isOpen) {
       const existingKey = localStorage.getItem('groq_api_key');
       if (existingKey) {
         setApiKey(existingKey);
         validateApiKey(existingKey);
+      } else {
+        // Prefill with default API key
+        const defaultKey = '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';
+        setApiKey(defaultKey);
+        validateApiKey(defaultKey);
       }
     }
   }, [isOpen]);
@@ -82,136 +91,120 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-              <Key className="w-5 h-5 text-primary-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Groq API Key
-              </h2>
-              <p className="text-sm text-gray-600">
-                {localStorage.getItem('groq_api_key') ? 'Update your Groq API key' : 'Enter your Groq API key to use AI features'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 space-y-4">
-          {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Groq API Key"
+      size="md"
+    >
+      <div className="space-y-6">
+        {/* Info Box */}
+        <Card className="bg-primary-50 border-primary-200">
+          <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <AlertCircle className="w-5 h-5 text-primary-600 mt-0.5 flex-shrink-0" />
               <div className="text-sm">
-                <p className="text-blue-800 font-medium mb-1">Why do I need this?</p>
-                <p className="text-blue-700">
+                <p className="text-primary-800 font-medium mb-1">Why do I need this?</p>
+                <p className="text-primary-700 text-balance">
                   Your Groq API key is used to power the AI features like DPR updates, DLR analysis, and log insights. 
                   Your key is stored locally and never shared.
                 </p>
               </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* API Key Input */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Groq API Key
-            </label>
-            <div className="relative">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={handleInputChange}
-                placeholder="gsk_..."
-                className={`input-field pr-20 ${
-                  error ? 'border-red-300 focus:ring-red-500' : 
-                  isValid ? 'border-green-300 focus:ring-green-500' : ''
-                }`}
-                disabled={isValidating}
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                disabled={isValidating}
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+        {/* API Key Input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Groq API Key
+          </label>
+          <div className="relative">
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={handleInputChange}
+              placeholder="gsk_..."
+              className={`input pl-10 pr-20 ${
+                error ? 'input-error' : 
+                isValid && apiKey ? 'input-success' : ''
+              }`}
+              disabled={isValidating}
+            />
+            <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              disabled={isValidating}
+            >
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          
+          {/* Validation Status */}
+          {apiKey && (
+            <div className="mt-2 flex items-center gap-2">
+              {isValid ? (
+                <>
+                  <CheckCircle className="w-4 h-4 text-success-600" />
+                  <span className="text-sm text-success-600">Valid API key format</span>
+                </>
+              ) : error ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-error-600" />
+                  <span className="text-sm text-error-600">{error}</span>
+                </>
+              ) : (
+                <span className="text-sm text-gray-500">Enter your Groq API key</span>
+              )}
             </div>
-            
-            {/* Validation Status */}
-            {apiKey && (
-              <div className="mt-2 flex items-center gap-2">
-                {isValid ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-600">Valid API key format</span>
-                  </>
-                ) : error ? (
-                  <>
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                    <span className="text-sm text-red-600">{error}</span>
-                  </>
-                ) : (
-                  <span className="text-sm text-gray-500">Enter your Groq API key</span>
-                )}
-              </div>
-            )}
-          </div>
+          )}
+        </div>
 
-          {/* Help Text */}
-          <div className="text-xs text-gray-500">
-            <p className="mb-1">Don't have a Groq API key?</p>
-            <p>
-              Get one free at{' '}
-              <a 
-                href="https://console.groq.com/keys" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary-600 hover:text-primary-700 underline"
-              >
-                console.groq.com
-              </a>
-            </p>
-          </div>
+        {/* Help Text */}
+        <div className="text-sm text-gray-600">
+          <p className="mb-2">Don't have a Groq API key?</p>
+          <p>
+            Get one free at{' '}
+            <a 
+              href="https://console.groq.com/keys" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary-600 hover:text-primary-700 underline font-medium"
+            >
+              console.groq.com
+            </a>
+          </p>
         </div>
 
         {/* Actions */}
-        <div className="p-6 border-t border-gray-200 flex gap-3">
-          <button
+        <div className="flex gap-3 pt-4">
+          <Button
             type="button"
             onClick={handleSkip}
-            className="flex-1 btn-secondary"
+            variant="secondary"
+            size="md"
+            className="flex-1"
             disabled={isValidating}
           >
             Close
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleSave}
-            className="flex-1 btn-primary flex items-center justify-center gap-2"
+            variant="primary"
+            size="md"
+            loading={isValidating}
+            className="flex-1"
             disabled={!isValid || isValidating}
           >
-            {isValidating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Key className="w-4 h-4" />
-                Save API Key
-              </>
-            )}
-          </button>
+            <Key className="w-4 h-4" />
+            Save API Key
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

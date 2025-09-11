@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { X, FileText, Calendar, Building, Loader2 } from 'lucide-react';
 import { spreadsheetAPI } from '../api';
+import Modal from './ui/Modal';
+import Button from './ui/Button';
+import Input from './ui/Input';
+import { Card, CardContent } from './ui/Card';
 
 const CreateSpreadsheetModal = ({ availableSheets, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -69,139 +73,112 @@ const CreateSpreadsheetModal = ({ availableSheets, onClose, onSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-600" />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              Create New Spreadsheet
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Create New Spreadsheet"
+      size="md"
+      className="max-h-[90vh] overflow-y-auto"
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Source Spreadsheet */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Source Spreadsheet
+          </label>
+          <select
+            name="source_spreadsheet_id"
+            value={formData.source_spreadsheet_id}
+            onChange={handleInputChange}
+            className="input w-full"
+            required
           >
-            <X className="w-5 h-5" />
-          </button>
+            <option value="">Select a spreadsheet to copy from</option>
+            {availableSheets.map((sheet) => (
+              <option key={sheet.id} value={sheet.id}>
+                {sheet.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Choose an existing spreadsheet to use as a template
+          </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Source Spreadsheet */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Source Spreadsheet
-            </label>
+        {/* Project Name */}
+        <Input
+          label="Project Name"
+          type="text"
+          name="project_name"
+          value={formData.project_name}
+          onChange={handleInputChange}
+          placeholder="e.g., NEST, ABC Project"
+          leftIcon={<Building className="w-4 h-4" />}
+          helperText="Enter the name of your project"
+          required
+          disabled={isLoading}
+        />
+
+        {/* Month */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Month
+          </label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <select
-              name="source_spreadsheet_id"
-              value={formData.source_spreadsheet_id}
+              name="month"
+              value={formData.month}
               onChange={handleInputChange}
-              className="input-field"
+              className="input pl-10 w-full"
               required
             >
-              <option value="">Select a spreadsheet to copy from</option>
-              {availableSheets.map((sheet) => (
-                <option key={sheet.id} value={sheet.id}>
-                  {sheet.name}
+              <option value="">Select month</option>
+              {months.map((month) => (
+                <option key={month} value={month}>
+                  {month}
                 </option>
               ))}
             </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Choose an existing spreadsheet to use as a template
-            </p>
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Select the month for the new spreadsheet
+          </p>
+        </div>
 
-          {/* Project Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Project Name
-            </label>
-            <div className="relative">
-              <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                name="project_name"
-                value={formData.project_name}
-                onChange={handleInputChange}
-                placeholder="e.g., NEST, ABC Project"
-                className="input-field pl-10"
-                required
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Enter the name of your project
-            </p>
+        {/* Error Message */}
+        {error && (
+          <div className="bg-error-50 border border-error-200 rounded-lg p-4 animate-slide-up">
+            <p className="text-sm text-error-800 font-medium">{error}</p>
           </div>
+        )}
 
-          {/* Month */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Month
-            </label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <select
-                name="month"
-                value={formData.month}
-                onChange={handleInputChange}
-                className="input-field pl-10"
-                required
-              >
-                <option value="">Select month</option>
-                {months.map((month) => (
-                  <option key={month} value={month}>
-                    {month}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Select the month for the new spreadsheet
-            </p>
-          </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 btn-secondary"
-              disabled={isLoading}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 btn-primary flex items-center justify-center gap-2"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4 h-4" />
-                  Create Spreadsheet
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {/* Actions */}
+        <div className="flex gap-3 pt-4">
+          <Button
+            type="button"
+            onClick={onClose}
+            variant="secondary"
+            size="md"
+            className="flex-1"
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            loading={isLoading}
+            className="flex-1"
+            disabled={isLoading}
+          >
+            <FileText className="w-4 h-4" />
+            Create Spreadsheet
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 };
 

@@ -51,9 +51,15 @@ export const authAPI = {
   // Get current user info
   getCurrentUser: () => apiClient.get('/user/me'),
   
-  // Login redirect (handled by backend)
-  login: () => {
-    window.location.href = 'http://localhost:8000/auth/login';
+  // Simple authentication endpoints
+  authenticate: (data) => apiClient.post('/auth/authenticate', data),
+  completeProfile: (data) => apiClient.post('/auth/complete-profile', data),
+  getSimpleUser: () => apiClient.get('/simple-user/me'),
+  resetPassword: (data) => apiClient.post('/auth/reset-password', data),
+  
+  // Google login redirect (handled by backend)
+  googleLogin: () => {
+    window.location.href = 'http://localhost:8000/auth/google-login';
   },
 };
 

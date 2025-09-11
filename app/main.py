@@ -11,11 +11,20 @@ from app.google_auth import (
     write_hello_world_to_sheet,
     list_google_sheets
 )
-from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse, AnalyzeLogsRequest, AnalyzeLogsResponse
+from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse, AnalyzeLogsRequest, AnalyzeLogsResponse, LoginRequest, SignupRequest, ProfileCompletionRequest, AuthResponse
 from app.mcp_client import mcp_client
 from app.llm_response import get_support_agent, get_dlr_support_agent, get_logs_support_agent, prompt_builder, prompt_builder_for_dlr_updation
 from app.fuzzy_matching import get_best_fuzzy_matches
 from app.config import GROQ_API_KEY
+from app.simple_auth import (
+    handle_signup, 
+    handle_login, 
+    handle_profile_completion,
+    handle_google_oauth_callback,
+    verify_simple_jwt_token,
+    create_simple_jwt_token
+)
+from app.database import get_simple_user_by_mobile, create_simple_user
 from typing import Optional
 
 app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
@@ -44,6 +53,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     """Get current user from JWT token"""
     token = credentials.credentials
     user_data = verify_jwt_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user_data
+
+async def get_current_simple_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current simple user from JWT token"""
+    token = credentials.credentials
+    user_data = verify_simple_jwt_token(token)
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid token")
     return user_data
@@ -108,14 +125,112 @@ async def home():
     </html>
     """
 
-@app.get("/auth/login")
-async def login():
+# Simple Authentication Endpoints
+@app.post("/auth/authenticate", response_model=AuthResponse)
+async def authenticate(request: dict):
+    """Unified login/signup endpoint"""
+    mobile_number = request.get('mobile_number')
+    password = request.get('password')
+    name = request.get('name')
+    username = request.get('username')
+    
+    if not mobile_number or not password:
+        return AuthResponse(
+            success=False,
+            message="Mobile number and password are required",
+            error="Missing required fields"
+        )
+    
+    # Check if user exists
+    user = await get_simple_user_by_mobile(mobile_number)
+    
+    if user:
+        # User exists - try login
+        if user.password != password:
+            return AuthResponse(
+                success=False,
+                message="Invalid password",
+                error="Incorrect password"
+            )
+        
+        # Login successful
+        token = create_simple_jwt_token(user.dict())
+        return AuthResponse(
+            success=True,
+            message="Login successful",
+            user_id=str(user.id),
+            token=token,
+            user=user.dict(),
+            requires_profile_completion=False
+        )
+    else:
+        # User doesn't exist - check if we have signup data
+        if not name or not username:
+            return AuthResponse(
+                success=False,
+                message="User not found. Please provide your name and username to sign up.",
+                error="user_not_found",
+                requires_signup=True
+            )
+        
+        # Create new user
+        user_data = {
+            'mobile_number': mobile_number,
+            'password': password,
+            'email': f"{mobile_number}@temp.com",  # Temporary email
+            'name': name.strip(),
+            'username': username.strip()
+        }
+        
+        user = await create_simple_user(user_data)
+        if not user:
+            return AuthResponse(
+                success=False,
+                message="Failed to create user",
+                error="Database error occurred"
+            )
+        
+        # Signup successful
+        token = create_simple_jwt_token(user.dict())
+        return AuthResponse(
+            success=True,
+            message="Account created successfully",
+            user_id=str(user.id),
+            token=token,
+            user=user.dict(),
+            requires_profile_completion=False
+        )
+
+@app.post("/auth/complete-profile", response_model=AuthResponse)
+async def complete_profile(request: ProfileCompletionRequest, current_user: dict = Depends(get_current_simple_user)):
+    """Complete user profile with name and username"""
+    return await handle_profile_completion(current_user['user_id'], request.name, request.username)
+
+@app.post("/auth/reset-password")
+async def reset_password(request: dict):
+    """Reset user password (placeholder implementation)"""
+    mobile_number = request.get('mobile_number')
+    if not mobile_number:
+        return {"success": False, "message": "Mobile number is required"}
+    
+    # In a real implementation, you would:
+    # 1. Generate a reset token
+    # 2. Send it via SMS/email
+    # 3. Store it in database with expiration
+    
+    return {
+        "success": True, 
+        "message": f"Password reset instructions sent to {mobile_number}"
+    }
+
+@app.get("/auth/google-login")
+async def google_login():
     """Redirect to Google OAuth2"""
     auth_url = get_google_auth_url()
     return RedirectResponse(url=auth_url)
 
 @app.get("/auth/callback")
-async def callback(code: str):
+async def callback(code: str, user_id: str = None):
     """Handle Google OAuth2 callback"""
     result = await handle_google_callback(code)
     
@@ -124,7 +239,25 @@ async def callback(code: str):
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
         return RedirectResponse(url=f"{frontend_url}/auth/callback?error=authentication_failed")
     
-    # Redirect to frontend with success and token
+    # If user_id is provided, this is a simple user linking Google account
+    if user_id:
+        google_data = {
+            'google_id': result['user']['google_id'],
+            'access_token': result['access_token'],
+            'refresh_token': result['user'].get('refresh_token'),
+            'name': result['user'].get('name'),
+            'picture': result['user'].get('picture')
+        }
+        auth_result = await handle_google_oauth_callback(user_id, google_data)
+        
+        if auth_result.success:
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            return RedirectResponse(url=f"{frontend_url}/auth/callback?success=true&token={auth_result.token}")
+        else:
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+            return RedirectResponse(url=f"{frontend_url}/auth/callback?error=google_linking_failed")
+    
+    # Original Google OAuth flow for direct Google login
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     # URL encode the user name to handle special characters
     import urllib.parse
@@ -139,10 +272,32 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
         "google_id": current_user['google_id'],
         "email": current_user['email'],
         "name": current_user.get('name', current_user.get('email', '')),
+        "picture": current_user.get('picture', ''),
         "access_token": "",  # Don't return the actual token
         "refresh_token": None,
         "created_at": None,
         "updated_at": None
+    }
+
+@app.get("/simple-user/me")
+async def get_current_simple_user_info(current_user: dict = Depends(get_current_simple_user)):
+    """Get current simple user information"""
+    from app.database import get_simple_user_by_id
+    user = await get_simple_user_by_id(current_user['user_id'])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "id": str(user.id),
+        "mobile_number": user.mobile_number,
+        "email": user.email,
+        "name": user.name,
+        "username": user.username,
+        "picture": user.picture,
+        "google_id": user.google_id,
+        "has_google_auth": bool(user.google_id),
+        "created_at": user.created_at,
+        "updated_at": user.updated_at
     }
 
 @app.get("/documents", response_model=DocumentListResponse)
@@ -808,8 +963,8 @@ async def new_spreadsheet_endpoint(
         
         current_year = datetime.now().year
         
-        # Create new spreadsheet name
-        new_spreadsheet_name = f"{request.project_name.upper()}_{request.month.upper()}_{current_year}"
+        # Create new spreadsheet name with DPR prefix
+        new_spreadsheet_name = f"DPR_{request.project_name.upper()}_{request.month.upper()}_{current_year}"
         
         # Step 1: Copy the source spreadsheet
         copy_result = await mcp_client.copy_spreadsheet(

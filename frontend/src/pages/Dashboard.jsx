@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key } from 'lucide-react';
+import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key, Menu, X } from 'lucide-react';
 import { authAPI, documentsAPI } from '../api';
 import Navigation from '../components/Navigation';
 import ChatInterface from '../components/ChatInterface';
 import CreateSpreadsheetModal from '../components/CreateSpreadsheetModal';
 import ApiKeyModal from '../components/ApiKeyModal';
+import AppLayout from '../components/layout/AppLayout';
+import Button from '../components/ui/Button';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -17,9 +20,20 @@ const Dashboard = () => {
   useEffect(() => {
     const initializeDashboard = async () => {
       try {
-        // Get user info
-        const userResponse = await authAPI.getCurrentUser();
-        setUser(userResponse.data);
+        // Get user info from localStorage (simple auth)
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          setUser({
+            name: userData.name || userData.username,
+            email: userData.email,
+            phone_number: userData.phone_number
+          });
+        } else {
+          // Fallback to API call if no stored user
+          const userResponse = await authAPI.getCurrentUser();
+          setUser(userResponse.data);
+        }
 
         // Get available documents
         const documentsResponse = await documentsAPI.getDocuments();
@@ -70,9 +84,84 @@ const Dashboard = () => {
     setSelectedSheet(sheet);
   };
 
-  const handleCreateSpreadsheet = () => {
-    setShowCreateModal(true);
+  const handleCreateSpreadsheet = async (projectName = null, useCurrentMonth = false) => {
+    if (projectName) {
+      // Direct creation for specific project
+      await createSpreadsheetForProject(projectName, useCurrentMonth);
+    } else {
+      // Show modal for general creation
+      setShowCreateModal(true);
+    }
   };
+
+  const createSpreadsheetForProject = async (projectName, useCurrentMonth = false) => {
+    try {
+      // Get current date and calculate month (next month or current month)
+      const now = new Date();
+      const targetMonth = useCurrentMonth 
+        ? new Date(now.getFullYear(), now.getMonth(), 1)
+        : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      
+      const monthNames = [
+        'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+      ];
+      
+      const monthName = monthNames[targetMonth.getMonth()];
+      const year = targetMonth.getFullYear();
+      
+      // Find a DPR spreadsheet to use as template
+      const dprSheets = availableSheets?.filter(sheet => 
+        sheet.name.startsWith('DPR_')
+      ) || [];
+      
+      if (dprSheets.length === 0) {
+        alert('No DPR spreadsheets found to use as template. Please create one first.');
+        return;
+      }
+      
+      // Use the first DPR sheet as template
+      const templateSheet = dprSheets[0];
+      
+      // Create the new spreadsheet name in DPR format
+      const newSpreadsheetName = `DPR_${projectName.replace(/\s+/g, '-').toUpperCase()}_${monthName}_${year}`;
+      
+      // Prepare request data
+      const requestData = {
+        spreadsheet_id: templateSheet.id,
+        project_name: projectName.replace(/\s+/g, '-').toUpperCase(), // Convert spaces to dashes and uppercase
+        month: monthName
+      };
+      
+      console.log('Creating DPR spreadsheet with data:', requestData);
+      
+      // Call the API
+      const response = await fetch('http://localhost:8000/new-spreadsheet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create spreadsheet');
+      }
+      
+      const result = await response.json();
+      console.log('Spreadsheet created successfully:', result);
+      
+      // Refresh the documents list
+      await handleSpreadsheetCreated();
+      
+    } catch (error) {
+      console.error('Error creating spreadsheet:', error);
+      alert(`Failed to create spreadsheet: ${error.message}`);
+    }
+  };
+
 
   const handleModalClose = () => {
     setShowCreateModal(false);
@@ -93,100 +182,99 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Data...</p>
-        </div>
+        <LoadingSpinner size="lg" text="Loading your workspace..." />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-600" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">DPR-DLR Management</h1>
-              <p className="text-sm text-gray-600">
-                Welcome back, {user?.name || 'User'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {/* <button
-              onClick={handleCreateSpreadsheet}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              New Spreadsheet
-            </button> */}
-            
-            <button
-              onClick={handleManageApiKey}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <Key className="w-4 h-4" />
-              API Key
-            </button>
-            
-            <button
-              onClick={handleLogout}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Logout
-            </button>
-          </div>
+  // Header component for the layout
+  const header = (
+    <div className="flex items-center justify-between w-full">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-sm">
+          <FileText className="w-6 h-6 text-primary-600" />
         </div>
-      </header>
-
-      {/* Main Content */}
-      <div className="flex h-[calc(100vh-80px)]">
-        {/* Left Sidebar - Navigation */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-          <Navigation
-            sheets={availableSheets}
-            selectedSheet={selectedSheet}
-            onSheetSelect={handleSheetSelect}
-            onCreateSpreadsheet={handleCreateSpreadsheet}
-          />
+        <div className="hidden sm:block">
+          <h1 className="text-xl font-semibold text-gray-900">AI Works Tracker</h1>
+          <p className="text-sm text-gray-600">
+            Welcome back, {user?.name || 'User'}
+          </p>
         </div>
-
-        {/* Right Main Area - Chat Interface */}
-        <div className="flex-1 flex flex-col">
-          {selectedSheet ? (
-            <ChatInterface
-              selectedSheet={selectedSheet}
-              user={user}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  No Spreadsheet Selected
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Choose a spreadsheet from the sidebar to start managing your DPR and DLR data.
-                </p>
-                <button
-                  onClick={handleCreateSpreadsheet}
-                  className="btn-primary flex items-center gap-2 mx-auto"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create New Spreadsheet
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="sm:hidden">
+          <h1 className="text-lg font-semibold text-gray-900">AI Works Tracker</h1>
         </div>
       </div>
+      
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={handleManageApiKey}
+          variant="ghost"
+          size="sm"
+          className="hidden sm:flex items-center gap-2"
+        >
+          <Key className="w-4 h-4" />
+          <span className="hidden lg:inline">API Key</span>
+        </Button>
+        
+        <Button
+          onClick={handleLogout}
+          variant="ghost"
+          size="sm"
+          className="flex items-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="hidden lg:inline">Logout</span>
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Sidebar component for the layout
+  const sidebar = (
+    <Navigation
+      sheets={availableSheets}
+      selectedSheet={selectedSheet}
+      onSheetSelect={handleSheetSelect}
+      onCreateSpreadsheet={handleCreateSpreadsheet}
+    />
+  );
+
+  // Main content
+  const mainContent = selectedSheet ? (
+    <ChatInterface
+      selectedSheet={selectedSheet}
+      user={user}
+    />
+  ) : (
+    <div className="flex-1 flex items-center justify-center p-6">
+      <div className="text-center max-w-md">
+        <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <MessageSquare className="w-10 h-10 text-gray-400" />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-3">
+          No Spreadsheet Selected
+        </h3>
+        <p className="text-gray-600 mb-6 text-balance">
+          Choose a spreadsheet from the sidebar to start managing your DPR and DLR data, or create a new one.
+        </p>
+        <Button
+          onClick={handleCreateSpreadsheet}
+          variant="primary"
+          size="lg"
+          className="w-full sm:w-auto"
+        >
+          <Plus className="w-5 h-5" />
+          Create New Spreadsheet
+        </Button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <AppLayout header={header} sidebar={sidebar}>
+        {mainContent}
+      </AppLayout>
 
       {/* Create Spreadsheet Modal */}
       {showCreateModal && (
@@ -205,7 +293,7 @@ const Dashboard = () => {
           onSave={handleApiKeySave}
         />
       )}
-    </div>
+    </>
   );
 };
 

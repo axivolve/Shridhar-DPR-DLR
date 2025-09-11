@@ -7,6 +7,7 @@ class User(BaseModel):
     google_id: str
     email: str
     name: str
+    picture: Optional[str] = None
     access_token: str
     refresh_token: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -154,4 +155,43 @@ class AnalyzeLogsResponse(BaseModel):
     logs_processed: int
     query: str
     feedback: str
+    error: Optional[str] = None
+
+# Simple Authentication Models
+class SimpleUser(BaseModel):
+    id: Optional[str] = None
+    mobile_number: str
+    password: str
+    email: str
+    name: Optional[str] = None
+    username: Optional[str] = None
+    picture: Optional[str] = None
+    google_id: Optional[str] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class LoginRequest(BaseModel):
+    mobile_number: str
+    password: str
+
+class SignupRequest(BaseModel):
+    mobile_number: str
+    password: str
+    email: str
+    name: str
+
+class ProfileCompletionRequest(BaseModel):
+    name: str
+    username: str
+
+class AuthResponse(BaseModel):
+    success: bool
+    message: str
+    user_id: Optional[str] = None
+    token: Optional[str] = None
+    user: Optional[dict] = None
+    requires_profile_completion: bool = False
+    requires_signup: bool = False
     error: Optional[str] = None

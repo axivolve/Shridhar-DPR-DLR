@@ -1,4 +1,4 @@
-# Shridhar DPR-DLR Management System
+# AI Works Tracker System
 
 A comprehensive FastAPI application for managing Daily Progress Reports (DPR) and Daily Log Reports (DLR) with Google Sheets integration, AI-powered analysis, and automated spreadsheet management.
 

@@ -50,6 +50,7 @@ async def handle_google_callback(code: str) -> Optional[dict]:
             'google_id': user_info['id'],
             'email': user_info['email'],
             'name': user_info['name'],
+            'picture': user_info.get('picture', ''),
             'access_token': credentials.token,
             'refresh_token': credentials.refresh_token
         }
