@@ -1507,6 +1507,144 @@ class MCPGoogleSheetsClient:
                 "data": [],
                 "logs_processed": 0
             }
+    
+    async def check_dpr_format_sheet_exists(self, google_id: str) -> Dict[str, Any]:
+        """
+        Check if a spreadsheet named "DPR_FORMAT" exists in the user's Google Drive.
+        
+        Args:
+            google_id: User's Google ID
+        
+        Returns:
+            Dict with success status and sheet details if found
+        """
+        try:
+            # Get user tokens
+            tokens = await get_user_tokens(google_id)
+            if not tokens:
+                return {"success": False, "error": "User tokens not found"}
+            
+            # Create credentials
+            credentials = Credentials(
+                token=tokens['access_token'],
+                refresh_token=tokens['refresh_token'],
+                token_uri='https://oauth2.googleapis.com/token',
+                client_id=GOOGLE_CLIENT_ID,
+                client_secret=GOOGLE_CLIENT_SECRET,
+                scopes=GOOGLE_SCOPES
+            )
+            
+            # Build Drive service
+            drive_service = build('drive', 'v3', credentials=credentials)
+            
+            # Search for DPR_FORMAT spreadsheet
+            query = "name='DPR_FORMAT' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+            results = drive_service.files().list(
+                q=query,
+                fields="files(id, name, createdTime, modifiedTime, webViewLink)"
+            ).execute()
+            
+            files = results.get('files', [])
+            
+            if files:
+                # Return the first match
+                return {
+                    "success": True,
+                    "exists": True,
+                    "spreadsheet_id": files[0]['id'],
+                    "name": files[0]['name'],
+                    "created_time": files[0].get('createdTime'),
+                    "modified_time": files[0].get('modifiedTime'),
+                    "web_view_link": files[0].get('webViewLink')
+                }
+            else:
+                return {
+                    "success": True,
+                    "exists": False,
+                    "message": "DPR_FORMAT spreadsheet not found"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Error checking for DPR_FORMAT sheet: {str(e)}"
+            }
+    
+    async def upload_dpr_format_sheet(self, google_id: str) -> Dict[str, Any]:
+        """
+        Upload the DPR_FORMAT.xlsx file to the user's Google Drive.
+        
+        Args:
+            google_id: User's Google ID
+        
+        Returns:
+            Dict with success status and uploaded file details
+        """
+        try:
+            import os
+            from googleapiclient.http import MediaFileUpload
+            
+            # Get user tokens
+            tokens = await get_user_tokens(google_id)
+            if not tokens:
+                return {"success": False, "error": "User tokens not found"}
+            
+            # Create credentials
+            credentials = Credentials(
+                token=tokens['access_token'],
+                refresh_token=tokens['refresh_token'],
+                token_uri='https://oauth2.googleapis.com/token',
+                client_id=GOOGLE_CLIENT_ID,
+                client_secret=GOOGLE_CLIENT_SECRET,
+                scopes=GOOGLE_SCOPES
+            )
+            
+            # Build Drive service
+            drive_service = build('drive', 'v3', credentials=credentials)
+            
+            # Check if file exists
+            file_path = os.path.join(os.path.dirname(__file__), 'templates', 'DPR_FORMAT.xlsx')
+            if not os.path.exists(file_path):
+                return {
+                    "success": False,
+                    "error": f"DPR_FORMAT.xlsx file not found at {file_path}"
+                }
+            
+            # Prepare file metadata
+            file_metadata = {
+                'name': 'DPR_FORMAT',
+                'mimeType': 'application/vnd.google-apps.spreadsheet'
+            }
+            
+            # Prepare media upload
+            media = MediaFileUpload(
+                file_path,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                resumable=True
+            )
+            
+            # Upload the file
+            file = drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id,name,createdTime,modifiedTime,webViewLink'
+            ).execute()
+            
+            return {
+                "success": True,
+                "spreadsheet_id": file.get('id'),
+                "name": file.get('name'),
+                "created_time": file.get('createdTime'),
+                "modified_time": file.get('modifiedTime'),
+                "web_view_link": file.get('webViewLink'),
+                "message": "DPR_FORMAT spreadsheet uploaded successfully"
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Error uploading DPR_FORMAT sheet: {str(e)}"
+            }
 
 # Global MCP client instance
 mcp_client = MCPGoogleSheetsClient()

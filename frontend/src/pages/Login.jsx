@@ -5,6 +5,7 @@ import { authAPI } from '../api';
 import Button from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 import Container from '../components/layout/Container';
+import Logo from '../components/ui/Logo';
 
 const Login = () => {
   const [authStep, setAuthStep] = useState('auth'); // 'auth', 'google'
@@ -41,8 +42,8 @@ const Login = () => {
         <div className="w-full">
           {/* Logo/Header */}
           <div className="text-center mb-8 animate-in">
-            <div className="mx-auto w-20 h-20 bg-gradient-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-              <FileText className="w-10 h-10 text-primary-600" />
+            <div className="mx-auto w-20 h-20 bg-white rounded-2xl flex items-center justify-center mb-6 shadow-lg border border-gray-200">
+              <Logo size="lg" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3 text-balance">
               AI Works Tracker

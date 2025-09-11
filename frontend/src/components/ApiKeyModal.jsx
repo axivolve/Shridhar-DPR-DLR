@@ -94,7 +94,7 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Groq API Key"
+      title="Add Groq API Key"
       size="md"
     >
       <div className="space-y-6">

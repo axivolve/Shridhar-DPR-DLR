@@ -96,13 +96,13 @@ const MobileDrawer = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   return (
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-in-out ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
         onClick={onClose}
       />
       
@@ -110,10 +110,11 @@ const MobileDrawer = ({
       <div
         ref={drawerRef}
         className={`
-          fixed z-50 bg-white shadow-2xl transition-transform duration-300 ease-in-out
+          fixed z-50 bg-white shadow-2xl transition-all duration-300 ease-out
           ${positionClasses[position]}
           ${sizeClasses[size]}
           ${transformClasses[position]}
+          ${isOpen ? 'pointer-events-auto' : 'pointer-events-none'}
           ${className}
         `}
         onTouchStart={handleTouchStart}

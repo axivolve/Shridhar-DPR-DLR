@@ -57,14 +57,15 @@ const MobileFAB = ({
               <button
                 key={action.id}
                 onClick={() => handleQuickAction(action.id)}
-                className={`w-12 h-12 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center ${
+                className={`px-4 py-2 rounded-full shadow-lg transition-all duration-200 flex items-center gap-2 ${
                   isActive
                     ? 'bg-primary-600 text-white scale-110'
                     : 'bg-white text-gray-700 hover:bg-gray-50'
                 }`}
                 title={action.description}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-4 h-4" />
+                <span className="text-sm font-medium">{action.label}</span>
               </button>
             );
           })}

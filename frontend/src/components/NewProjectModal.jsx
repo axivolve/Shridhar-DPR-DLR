@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Calendar, Building, Loader2, Sparkles } from 'lucide-react';
+import { Building, Plus, Calendar } from 'lucide-react';
 import { spreadsheetAPI } from '../api';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import Input from './ui/Input';
-import { Card, CardContent } from './ui/Card';
 
 const NewProjectModal = ({ availableSheets, onClose, onSuccess }) => {
   // Find DPR_FORMAT sheet and set it as default
@@ -98,65 +97,70 @@ const NewProjectModal = ({ availableSheets, onClose, onSuccess }) => {
       isOpen={true}
       onClose={onClose}
       title="Create New Project"
-      size="md"
+      size="lg"
       className="max-h-[90vh] overflow-y-auto"
     >
-      <div className="space-y-6">
-        {/* Info Card */}
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
-            <div className="flex items-start space-x-3">
-              <Sparkles className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div>
-                <h3 className="font-medium text-blue-900 mb-1">Automated Project Setup</h3>
-                <p className="text-sm text-blue-700">
-                  Your new project will be created automatically with:
-                </p>
-                <ul className="text-xs text-blue-600 mt-2 space-y-1">
-                  <li>• DPR_FORMAT template as base</li>
-                  <li>• Current month ({formData.month}) and year ({new Date().getFullYear()})</li>
-                  <li>• Pre-populated dates and headers</li>
-                  <li>• Previous month's data (if available)</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="px-1">
+        {/* Header Section */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+            <Plus className="w-8 h-8 text-blue-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Start a New Project</h2>
+          <p className="text-sm text-gray-600">
+            Create a new project with DPR DLR sheet ready for{' '}
+            <span className="inline-flex items-center gap-1 font-medium text-blue-600">
+              <Calendar className="w-4 h-4" />
+              {formData.month} {new Date().getFullYear()}
+            </span>
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Project Name - Only Required Field */}
-          <Input
-            label="Project Name"
-            type="text"
-            name="project_name"
-            value={formData.project_name}
-            onChange={handleInputChange}
-            placeholder="e.g., NEST, ABC Project, My New Project"
-            leftIcon={<Building className="w-4 h-4" />}
-            helperText="Enter a name for your new project"
-            required
-            disabled={isLoading}
-            className="text-lg"
-          />
+          {/* Project Name Input */}
+          <div className="space-y-2">
+            <Input
+              label="Project Name"
+              type="text"
+              name="project_name"
+              value={formData.project_name}
+              onChange={handleInputChange}
+              placeholder="Enter your project name"
+              leftIcon={<Building className="w-4 h-4" />}
+              helperText="Choose a descriptive name for your project"
+              required
+              disabled={isLoading}
+              className="text-base"
+            />
+          </div>
 
           {/* Hidden fields for automatic values */}
           <input type="hidden" name="source_spreadsheet_id" value={formData.source_spreadsheet_id} />
           <input type="hidden" name="month" value={formData.month} />
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-error-50 border border-error-200 rounded-lg p-4 animate-slide-up">
-            <p className="text-sm text-error-800 font-medium">{error}</p>
-          </div>
-        )}
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-slide-up">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-800 font-medium">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-6 border-t border-gray-200">
             <Button
               type="button"
               onClick={onClose}
               variant="secondary"
-              size="md"
+              size="lg"
               className="flex-1"
               disabled={isLoading}
             >
@@ -165,12 +169,11 @@ const NewProjectModal = ({ availableSheets, onClose, onSuccess }) => {
             <Button
               type="submit"
               variant="primary"
-              size="md"
+              size="lg"
               loading={isLoading}
               className="flex-1"
               disabled={isLoading}
             >
-              <Sparkles className="w-4 h-4" />
               Create Project
             </Button>
           </div>

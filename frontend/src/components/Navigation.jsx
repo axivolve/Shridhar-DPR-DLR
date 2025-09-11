@@ -126,6 +126,17 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
     return organized;
   }, [sheets]);
 
+  // Set first project as expanded on initial load
+  React.useEffect(() => {
+    if (Object.keys(organizedSheets).length > 0) {
+      const firstProjectName = Object.keys(organizedSheets)[0];
+      setExpandedDropdowns(prev => ({
+        ...prev,
+        [firstProjectName]: true
+      }));
+    }
+  }, [organizedSheets]);
+
   const toggleDropdown = (projectName) => {
     setExpandedDropdowns(prev => ({
       ...prev,
@@ -203,7 +214,7 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white">
+      {/* <div className="p-4 border-b border-gray-200 bg-white">
         <Button
           onClick={handleAddProject}
           variant="primary"
@@ -215,23 +226,23 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
           <Plus className="w-4 h-4" />
           {isCreatingProject ? 'Creating Project...' : 'Add Project'}
         </Button>
-      </div>
+      </div> */}
 
       {/* Sheets List */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {!Array.isArray(sheets) ? (
-          <div className="p-6">
+          <div className="p-4">
             <LoadingSpinner size="md" text="Loading spreadsheets..." />
           </div>
         ) : Object.keys(organizedSheets).length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-gray-400" />
+          <div className="p-4 text-center">
+            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+              <FileText className="w-6 h-6 text-gray-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
               No Projects Yet
             </h3>
-            <p className="text-gray-600 text-sm mb-4 text-balance">
+            <p className="text-gray-600 text-xs mb-3 text-balance">
               Create your first project to start managing DPR and DLR reports
             </p>
             <Button
@@ -245,30 +256,32 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
             </Button>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="p-1 space-y-0.5">
             {Object.entries(organizedSheets).map(([projectName, projectSheets]) => (
               <Card key={projectName} className="border-0 shadow-none bg-transparent">
                 <CardContent className="p-0">
                   {/* Project Dropdown Header */}
-                  <div className="flex items-center justify-between p-3 rounded-lg transition-colors duration-200 hover:bg-gray-50 border border-transparent">
+                  <div className="flex items-center justify-between p-2 rounded-md transition-all duration-200 hover:bg-gray-50/50 hover:shadow-sm">
                     <div 
                       onClick={() => toggleDropdown(projectName)}
-                      className="flex items-center gap-3 cursor-pointer flex-1 touch-target"
+                      className="flex items-center gap-2 cursor-pointer flex-1 touch-target"
                     >
-                      {expandedDropdowns[projectName] ? (
-                        <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      )}
+                      <div className="transition-transform duration-200 ease-in-out">
+                        {expandedDropdowns[projectName] ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <Building className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                         <h3 className="font-medium text-sm text-gray-900 truncate">{projectName}</h3>
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full flex-shrink-0">
+                        <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md flex-shrink-0">
                           {projectSheets.length}
                         </span>
                       </div>
                     </div>
-                    <Button
+                    {/* <Button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCreateSpreadsheet(projectName);
@@ -283,29 +296,33 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
                       ) : (
                         <Plus className="w-4 h-4" />
                       )}
-                    </Button>
+                    </Button> */}
                   </div>
 
                   {/* Project Sheets */}
                   {expandedDropdowns[projectName] && (
-                    <div className="ml-6 mt-1 space-y-1 animate-slide-up">
-                      {projectSheets.map((sheet) => (
-                        <div
-                          key={sheet.id}
-                          onClick={() => onSheetSelect(sheet)}
-                          className={`p-3 rounded-lg cursor-pointer transition-all duration-200 touch-target ${
-                            selectedSheet?.id === sheet.id
-                              ? 'bg-primary-50 border border-primary-200 shadow-sm'
-                              : 'hover:bg-gray-50 border border-transparent'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    <div className="ml-4 mt-0.5 space-y-0.5 overflow-hidden">
+                      <div className="animate-slide-down space-y-0.5">
+                        {projectSheets.map((sheet, index) => (
+                          <div
+                            key={sheet.id}
+                            onClick={() => onSheetSelect(sheet)}
+                            className={`p-2 rounded-md cursor-pointer transition-all duration-200 touch-target transform hover:scale-[1.02] ${
+                              selectedSheet?.id === sheet.id
+                                ? 'bg-primary-50 border border-primary-200 shadow-sm'
+                                : 'hover:bg-gray-50/50 border border-transparent hover:shadow-sm'
+                            }`}
+                            style={{
+                              animationDelay: `${index * 50}ms`
+                            }}
+                          >
+                          <div className="flex items-center gap-2">
+                            <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${
                               selectedSheet?.id === sheet.id
                                 ? 'bg-primary-100'
                                 : 'bg-gray-100'
                             }`}>
-                              <FileText className={`w-4 h-4 ${
+                              <FileText className={`w-3.5 h-3.5 ${
                                 selectedSheet?.id === sheet.id
                                   ? 'text-primary-600'
                                   : 'text-gray-600'
@@ -320,45 +337,27 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
                               }`}>
                                 {sheet.parsed.displayName}
                               </h4>
-                              
-                              <div className="flex items-center gap-2 mt-1">
-                                <Calendar className="w-3 h-3 text-gray-400" />
-                                <span className="text-xs text-gray-500">
-                                  {formatDate(sheet.modifiedTime)}
-                                </span>
+                            </div>
+                          </div>
+                        </div>
+                        ))}
+                        
+                        {/* Loading Animation */}
+                        {loadingProjects[projectName] && (
+                          <div className="p-2 rounded-md bg-gray-50/50 border border-gray-200 animate-pulse">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin" />
                               </div>
-                              
-                              {sheet.owners && sheet.owners.length > 0 && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <Users className="w-3 h-3 text-gray-400" />
-                                  <span className="text-xs text-gray-500 truncate">
-                                    {sheet.owners[0].displayName || sheet.owners[0].emailAddress}
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm text-gray-600">
+                                  Creating new DPR DLR sheet...
+                                </h4>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                      
-                      {/* Loading Animation */}
-                      {loadingProjects[projectName] && (
-                        <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 animate-pulse">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                              <div className="w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm text-gray-600">
-                                Creating new DPR DLR sheet...
-                              </h4>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Please wait while we prepare your new month
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -369,13 +368,10 @@ const Navigation = ({ sheets = [], selectedSheet, onSheetSelect, onCreateSpreads
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-200 bg-gray-50">
-        <div className="text-xs text-gray-500 text-center space-y-1">
+      <div className="p-3 border-t border-gray-200 bg-gray-50/50">
+        <div className="text-xs text-gray-500 text-center">
           <p className="font-medium">
-            {totalSheets} DPR spreadsheet{totalSheets !== 1 ? 's' : ''}
-          </p>
-          <p>
-            {Object.keys(organizedSheets).length} project{Object.keys(organizedSheets).length !== 1 ? 's' : ''}
+            {totalSheets} DPR spreadsheet{totalSheets !== 1 ? 's' : ''} • {Object.keys(organizedSheets).length} project{Object.keys(organizedSheets).length !== 1 ? 's' : ''}
           </p>
         </div>
       </div>

@@ -314,6 +314,80 @@ async def show_document_list(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/check-dpr-format")
+async def check_dpr_format(current_user: dict = Depends(get_current_user)):
+    """
+    Check if DPR_FORMAT spreadsheet exists in the user's Google Drive.
+    """
+    try:
+        result = await mcp_client.check_dpr_format_sheet_exists(current_user['google_id'])
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload-dpr-format")
+async def upload_dpr_format(current_user: dict = Depends(get_current_user)):
+    """
+    Upload DPR_FORMAT.xlsx to the user's Google Drive.
+    """
+    try:
+        result = await mcp_client.upload_dpr_format_sheet(current_user['google_id'])
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/initialize-workspace")
+async def initialize_workspace(current_user: dict = Depends(get_current_user)):
+    """
+    Initialize workspace by checking for DPR_FORMAT sheet and uploading if needed.
+    This endpoint handles the complete initialization process.
+    """
+    try:
+        # First, check if DPR_FORMAT exists
+        check_result = await mcp_client.check_dpr_format_sheet_exists(current_user['google_id'])
+        
+        if not check_result.get('success', False):
+            return {
+                "success": False,
+                "error": check_result.get('error', 'Failed to check for DPR_FORMAT sheet'),
+                "action_taken": "none"
+            }
+        
+        if check_result.get('exists', False):
+            # DPR_FORMAT already exists
+            return {
+                "success": True,
+                "action_taken": "none",
+                "message": "DPR_FORMAT sheet already exists",
+                "spreadsheet_id": check_result.get('spreadsheet_id'),
+                "name": check_result.get('name')
+            }
+        else:
+            # DPR_FORMAT doesn't exist, upload it
+            upload_result = await mcp_client.upload_dpr_format_sheet(current_user['google_id'])
+            
+            if upload_result.get('success', False):
+                return {
+                    "success": True,
+                    "action_taken": "uploaded",
+                    "message": "DPR_FORMAT sheet uploaded successfully",
+                    "spreadsheet_id": upload_result.get('spreadsheet_id'),
+                    "name": upload_result.get('name')
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": upload_result.get('error', 'Failed to upload DPR_FORMAT sheet'),
+                    "action_taken": "upload_failed"
+                }
+                
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Workspace initialization failed: {str(e)}",
+            "action_taken": "error"
+        }
+
 @app.get("/mcp/sheet-data/{sheet_id}", response_model=SheetDataResponse)
 async def get_sheet_data_mcp(
     sheet_id: str,

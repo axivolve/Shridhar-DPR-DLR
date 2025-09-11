@@ -146,4 +146,15 @@ export const spreadsheetAPI = {
   },
 };
 
+export const workspaceAPI = {
+  // Initialize workspace (check and upload DPR_FORMAT if needed)
+  initializeWorkspace: () => apiClient.get('/initialize-workspace'),
+  
+  // Check if DPR_FORMAT exists
+  checkDprFormat: () => apiClient.get('/check-dpr-format'),
+  
+  // Upload DPR_FORMAT
+  uploadDprFormat: () => apiClient.post('/upload-dpr-format'),
+};
+
 export default apiClient;

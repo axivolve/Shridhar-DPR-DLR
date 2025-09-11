@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key, Menu, X } from 'lucide-react';
-import { authAPI, documentsAPI } from '../api';
+import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key, Menu, X, Upload, CheckCircle, AlertCircle } from 'lucide-react';
+import { authAPI, documentsAPI, workspaceAPI } from '../api';
 import Navigation from '../components/Navigation';
 import ChatInterface from '../components/ChatInterface';
-import CreateSpreadsheetModal from '../components/CreateSpreadsheetModal';
+import NewProjectModal from '../components/NewProjectModal';
 import ApiKeyModal from '../components/ApiKeyModal';
 import AppLayout from '../components/layout/AppLayout';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import Logo from '../components/ui/Logo';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -16,6 +17,9 @@ const Dashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(false);
+  const [initializationStatus, setInitializationStatus] = useState(null);
+  const [loadingStep, setLoadingStep] = useState('Loading your workspace...');
 
   useEffect(() => {
     const initializeDashboard = async () => {
@@ -35,17 +39,70 @@ const Dashboard = () => {
           setUser(userResponse.data);
         }
 
+        // Initialize workspace (check and upload DPR_FORMAT if needed)
+        setLoadingStep('Initializing workspace...');
+        setInitializing(true);
+        try {
+          setLoadingStep('Checking for DPR_FORMAT...');
+          const initResponse = await workspaceAPI.initializeWorkspace();
+          setInitializationStatus(initResponse.data);
+          
+          if (initResponse.data.success) {
+            console.log('Workspace initialized:', initResponse.data);
+            if (initResponse.data.action_taken === 'uploaded') {
+              setLoadingStep('DPR_FORMAT uploaded successfully');
+            } else if (initResponse.data.action_taken === 'found') {
+              setLoadingStep('DPR_FORMAT found - almost ready!');
+            } else {
+              setLoadingStep('Workspace ready!');
+            }
+          } else {
+            console.error('Workspace initialization failed:', initResponse.data.error);
+            setLoadingStep('Workspace setup failed');
+          }
+        } catch (initError) {
+          console.error('Error initializing workspace:', initError);
+          setInitializationStatus({
+            success: false,
+            error: 'Failed to initialize workspace'
+          });
+          setLoadingStep('Workspace setup failed');
+        } finally {
+          setInitializing(false);
+        }
+
         // Get available documents
+        setLoadingStep('Loading your spreadsheets...');
         const documentsResponse = await documentsAPI.getDocuments();
         const documents = Array.isArray(documentsResponse.data) ? documentsResponse.data : [];
         setAvailableSheets(documents);
         
-        // Select first sheet by default
-        if (documents.length > 0) {
-          setSelectedSheet(documents[0]);
+        // Filter out template sheets and select first valid project sheet
+        const validProjectSheets = documents.filter(sheet => {
+          // Only include sheets that start with DPR_ and follow the project naming convention
+          if (!sheet.name.startsWith('DPR_')) return false;
+          
+          // Exclude template sheets like DPR_FORMAT
+          if (sheet.name === 'DPR_FORMAT') return false;
+          
+          // Check if it follows the project naming pattern: DPR_PROJECTNAME_MONTH_YEAR
+          const withoutPrefix = sheet.name.substring(4);
+          const parts = withoutPrefix.split('_');
+          return parts.length >= 3; // At least project name, month, and year
+        });
+        
+        // Select the latest valid project sheet by default
+        if (validProjectSheets.length > 0) {
+          // Sort by creation date (assuming newer sheets have higher IDs or we can sort by name)
+          const sortedSheets = validProjectSheets.sort((a, b) => {
+            // Sort by name to get the most recent month/year combination
+            return b.name.localeCompare(a.name);
+          });
+          setSelectedSheet(sortedSheets[0]);
         }
 
         // Check if user has Groq API key, if not show modal
+        setLoadingStep('Finalizing setup...');
         const groqApiKey = localStorage.getItem('groq_api_key');
         if (!groqApiKey) {
           setShowApiKeyModal(true);
@@ -94,6 +151,10 @@ const Dashboard = () => {
     }
   };
 
+  const handleOpenCreateModal = () => {
+    setShowCreateModal(true);
+  };
+
   const createSpreadsheetForProject = async (projectName, useCurrentMonth = false) => {
     try {
       // Get current date and calculate month (next month or current month)
@@ -110,18 +171,18 @@ const Dashboard = () => {
       const monthName = monthNames[targetMonth.getMonth()];
       const year = targetMonth.getFullYear();
       
-      // Find a DPR spreadsheet to use as template
-      const dprSheets = availableSheets?.filter(sheet => 
-        sheet.name.startsWith('DPR_')
-      ) || [];
+      // Find DPR_FORMAT sheet to use as template
+      const dprFormatSheet = availableSheets?.find(sheet => 
+        sheet.name === 'DPR_FORMAT'
+      );
       
-      if (dprSheets.length === 0) {
-        alert('No DPR spreadsheets found to use as template. Please create one first.');
+      if (!dprFormatSheet) {
+        alert('DPR_FORMAT template sheet not found. Please ensure your workspace is properly initialized.');
         return;
       }
       
-      // Use the first DPR sheet as template
-      const templateSheet = dprSheets[0];
+      // Use DPR_FORMAT as template
+      const templateSheet = dprFormatSheet;
       
       // Create the new spreadsheet name in DPR format
       const newSpreadsheetName = `DPR_${projectName.replace(/\s+/g, '-').toUpperCase()}_${monthName}_${year}`;
@@ -153,7 +214,7 @@ const Dashboard = () => {
       const result = await response.json();
       console.log('Spreadsheet created successfully:', result);
       
-      // Refresh the documents list
+      // Refresh the documents list and select the new sheet
       await handleSpreadsheetCreated();
       
     } catch (error) {
@@ -173,6 +234,22 @@ const Dashboard = () => {
       const documentsResponse = await documentsAPI.getDocuments();
       const documents = Array.isArray(documentsResponse.data) ? documentsResponse.data : [];
       setAvailableSheets(documents);
+      
+      // Filter and select the latest valid project sheet
+      const validProjectSheets = documents.filter(sheet => {
+        if (!sheet.name.startsWith('DPR_')) return false;
+        if (sheet.name === 'DPR_FORMAT') return false;
+        const withoutPrefix = sheet.name.substring(4);
+        const parts = withoutPrefix.split('_');
+        return parts.length >= 3;
+      });
+      
+      if (validProjectSheets.length > 0) {
+        const sortedSheets = validProjectSheets.sort((a, b) => {
+          return b.name.localeCompare(a.name);
+        });
+        setSelectedSheet(sortedSheets[0]);
+      }
     } catch (error) {
       console.error('Error refreshing documents:', error);
     }
@@ -182,7 +259,20 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner size="lg" text="Loading your workspace..." />
+        <div className="text-center">
+          <LoadingSpinner size="lg" text={loadingStep} />
+          {initializationStatus && !initializationStatus.success && (
+            <div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-200 max-w-md">
+              <div className="flex items-center justify-center gap-2 text-red-700">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm font-medium">Setup Error</span>
+              </div>
+              <p className="text-xs text-red-600 mt-1">
+                {initializationStatus.error || 'Unknown error occurred'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -191,8 +281,8 @@ const Dashboard = () => {
   const header = (
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-sm">
-          <FileText className="w-6 h-6 text-primary-600" />
+        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200">
+          <Logo size="md" />
         </div>
         <div className="hidden sm:block">
           <h1 className="text-xl font-semibold text-gray-900">AI Works Tracker</h1>
@@ -210,7 +300,7 @@ const Dashboard = () => {
           onClick={handleManageApiKey}
           variant="ghost"
           size="sm"
-          className="hidden sm:flex items-center gap-2"
+          className="flex items-center gap-2"
         >
           <Key className="w-4 h-4" />
           <span className="hidden lg:inline">API Key</span>
@@ -239,12 +329,44 @@ const Dashboard = () => {
     />
   );
 
+  // Check if there are any valid project sheets
+  const validProjectSheets = availableSheets?.filter(sheet => {
+    if (!sheet.name.startsWith('DPR_')) return false;
+    if (sheet.name === 'DPR_FORMAT') return false;
+    const withoutPrefix = sheet.name.substring(4);
+    const parts = withoutPrefix.split('_');
+    return parts.length >= 3;
+  }) || [];
+
   // Main content
   const mainContent = selectedSheet ? (
     <ChatInterface
       selectedSheet={selectedSheet}
       user={user}
     />
+  ) : validProjectSheets.length === 0 ? (
+    <div className="flex-1 flex items-center justify-center p-6">
+      <div className="text-center max-w-md">
+        <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <MessageSquare className="w-10 h-10 text-gray-400" />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-3">
+          No Projects Found
+        </h3>
+        <p className="text-gray-600 mb-6 text-balance">
+          Create your first project to start managing DPR and DLR reports. Projects help organize your construction data by month and year.
+        </p>
+        <Button
+          onClick={handleOpenCreateModal}
+          variant="primary"
+          size="lg"
+          className="w-full sm:w-auto"
+        >
+          <Plus className="w-5 h-5" />
+          Create Your First Project
+        </Button>
+      </div>
+    </div>
   ) : (
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="text-center max-w-md">
@@ -258,13 +380,13 @@ const Dashboard = () => {
           Choose a spreadsheet from the sidebar to start managing your DPR and DLR data, or create a new one.
         </p>
         <Button
-          onClick={handleCreateSpreadsheet}
+          onClick={handleOpenCreateModal}
           variant="primary"
           size="lg"
           className="w-full sm:w-auto"
         >
           <Plus className="w-5 h-5" />
-          Create New Spreadsheet
+          Create New Project
         </Button>
       </div>
     </div>
@@ -276,9 +398,9 @@ const Dashboard = () => {
         {mainContent}
       </AppLayout>
 
-      {/* Create Spreadsheet Modal */}
+      {/* New Project Modal */}
       {showCreateModal && (
-        <CreateSpreadsheetModal
+        <NewProjectModal
           availableSheets={availableSheets || []}
           onClose={handleModalClose}
           onSuccess={handleSpreadsheetCreated}

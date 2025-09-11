@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff } from 'lucide-react';
 import { dprAPI, dlrAPI, logsAPI } from '../api';
 import Button from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import LoadingSpinner from './ui/LoadingSpinner';
+import LoadingMessage from './ui/LoadingMessage';
 import MobileFAB from './mobile/MobileFAB';
+import { triggerHaptic } from '../utils/hapticFeedback';
 
 const ChatInterface = ({ selectedSheet, user }) => {
   const [messages, setMessages] = useState([]);
@@ -12,6 +14,12 @@ const ChatInterface = ({ selectedSheet, user }) => {
   const [mode, setMode] = useState('dpr'); // 'dpr', 'dlr', 'logs'
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  // Audio recording state
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [audioChunks, setAudioChunks] = useState([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const streamRef = useRef(null);
 
   const parseSheetTitle = (sheetName) => {
     // Check if it's a DPR sheet
@@ -57,6 +65,117 @@ const ChatInterface = ({ selectedSheet, user }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Initialize media recorder cleanup
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // Handle audio data
+  useEffect(() => {
+    if (audioChunks.length > 0 && !isRecording) {
+      processAudio(audioChunks);
+      setAudioChunks([]);
+    }
+  }, [audioChunks, isRecording]);
+
+  // Process recorded audio with Groq STT
+  const processAudio = useCallback(async (chunks) => {
+    try {
+      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+      const groqApiKey = localStorage.getItem('groq_api_key');
+      
+      if (!groqApiKey) {
+        alert('Please set your Groq API key first');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'recording.webm');
+      formData.append('model', 'whisper-large-v3-turbo');
+      formData.append('language', 'en');
+
+      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqApiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to transcribe audio');
+      }
+
+      const result = await response.json();
+      setInputMessage(prev => prev + ' ' + result.text);
+      triggerHaptic('success');
+    } catch (error) {
+      console.error('Error processing audio:', error);
+      alert(`Error: ${error.message}`);
+      triggerHaptic('error');
+    }
+  }, []);
+
+  // Start/stop recording
+  const toggleRecording = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording
+      triggerHaptic('medium');
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      // Stop all tracks to release microphone
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+    } else {
+      try {
+        triggerHaptic('light');
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            chunks.push(e.data);
+          }
+        };
+        
+        recorder.onstop = () => {
+          setAudioChunks([...chunks]);
+          // Stop all tracks when recording stops
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => {
+              track.stop();
+            });
+            streamRef.current = null;
+          }
+        };
+        
+        recorder.start(1000); // Collect data every second
+        setMediaRecorder(recorder);
+        setIsRecording(true);
+        
+      } catch (error) {
+        console.error('Error accessing microphone:', error);
+        alert('Could not access microphone. Please ensure you have granted microphone permissions.');
+        triggerHaptic('error');
+      }
+    }
+  }, [isRecording, mediaRecorder]);
+
   const modeOptions = [
     { value: 'dpr', label: 'Update DPR', icon: FileText, description: 'Daily Progress Reports' },
     { value: 'dlr', label: 'Update DLR', icon: BarChart3, description: 'Daily Log Reports' },
@@ -75,6 +194,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
         return 'Type your message...';
     }
   };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -110,10 +230,25 @@ const ChatInterface = ({ selectedSheet, user }) => {
         });
       }
 
+      // Extract feedback based on response type and mode
+      let feedbackContent = 'Operation completed successfully';
+      
+      if (mode === 'dpr' && response.data.llm_result?.agent_feedback?.[0]) {
+        feedbackContent = response.data.llm_result.agent_feedback[0];
+      } else if (mode === 'dlr' && response.data.llm_result?.feedbacks?.[0]) {
+        feedbackContent = response.data.llm_result.feedbacks[0];
+      } else if (mode === 'logs' && response.data.feedback) {
+        feedbackContent = response.data.feedback;
+      } else if (response.data.feedback) {
+        feedbackContent = response.data.feedback;
+      } else if (response.data.llm_result?.feedback) {
+        feedbackContent = response.data.llm_result.feedback;
+      }
+
       const aiMessage = {
         id: Date.now() + 1,
         type: 'ai',
-        content: response.data.feedback || response.data.llm_result?.feedback || 'Operation completed successfully',
+        content: feedbackContent,
         timestamp: new Date(),
         mode: mode,
         data: response.data,
@@ -260,21 +395,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
           ))
         )}
 
-        {isLoading && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-              <Bot className="w-4 h-4 text-primary-600" />
-            </div>
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-3">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
-                  <span className="text-sm text-gray-600">Processing your request...</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {isLoading && <LoadingMessage mode={mode} />}
 
         <div ref={messagesEndRef} />
       </div>
@@ -295,7 +416,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
                   className="flex-shrink-0"
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="hidden sm:inline">{option.label}</span>
+                  <span>{option.label}</span>
                 </Button>
               );
             })}
@@ -311,11 +432,27 @@ const ChatInterface = ({ selectedSheet, user }) => {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={getPlaceholderText()}
+              placeholder={isRecording ? '🎤 Recording...' : getPlaceholderText()}
               className="input w-full h-12 text-base"
               disabled={isLoading}
             />
           </div>
+          
+          {/* Voice Input Button */}
+          <button
+            type="button"
+            onClick={toggleRecording}
+            className={`flex items-center justify-center h-12 w-12 rounded-2xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-soft hover:scale-110 ${
+              isRecording 
+                ? 'bg-gradient-to-r from-error-500 to-error-600 text-white hover:shadow-glow animate-pulse-soft' 
+                : 'bg-white/80 text-gray-600 hover:bg-white hover:shadow-medium focus:ring-primary-500'
+            }`}
+            title={isRecording ? 'Stop recording' : 'Start voice input'}
+            disabled={isLoading}
+          >
+            {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
+          
           <Button
             type="submit"
             variant="primary"
@@ -325,7 +462,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
             className="h-12 px-4"
           >
             <Send className="w-4 h-4" />
-            <span className="hidden sm:inline ml-2">Send</span>
+            <span className="ml-2 hidden sm:inline">Send</span>
           </Button>
         </form>
       </div>

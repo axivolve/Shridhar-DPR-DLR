@@ -154,7 +154,7 @@ const AuthForm = ({ onSuccess, onError }) => {
     <div className="w-full">
       <div className="text-center mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
-          {showSignupFields ? 'Create Account' : 'Welcome Back'}
+          {showSignupFields ? 'Create Account' : 'Welcome'}
         </h1>
         <p className="text-gray-600 text-balance">
           {showSignupFields 

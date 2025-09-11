@@ -61,7 +61,7 @@ const BottomNavigation = ({
           variant="primary"
           size="sm"
           className="rounded-full w-12 h-12 p-0 shadow-lg"
-          title="Create New Spreadsheet"
+          title="Create New Project"
         >
           <Plus className="w-5 h-5" />
         </Button>
