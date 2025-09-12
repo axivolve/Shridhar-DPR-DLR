@@ -14,12 +14,25 @@ const ChatInterface = ({ selectedSheet, user }) => {
   const [mode, setMode] = useState('dpr'); // 'dpr', 'dlr', 'logs'
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const languageDropdownRef = useRef(null);
 
   // Audio recording state
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioChunks, setAudioChunks] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const streamRef = useRef(null);
+  
+  // Language selection state
+  const [selectedLanguage, setSelectedLanguage] = useState('auto');
+  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
+  
+  // Language options for speech-to-text
+  const languageOptions = [
+    { value: 'auto', label: 'Auto-detect', flag: '🌍', description: 'Automatically detect language' },
+    { value: 'en', label: 'English', flag: '🇺🇸', description: 'English (US)' },
+    { value: 'hi', label: 'हिंदी', flag: '🇮🇳', description: 'Hindi' },
+    { value: 'gu', label: 'ગુજરાતી', flag: '🇮🇳', description: 'Gujarati' },
+  ];
 
   const parseSheetTitle = (sheetName) => {
     // Check if it's a DPR sheet
@@ -65,6 +78,20 @@ const ChatInterface = ({ selectedSheet, user }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Handle clicks outside language dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target)) {
+        setShowLanguageDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Initialize media recorder cleanup
   useEffect(() => {
     return () => {
@@ -82,7 +109,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
     }
   }, [audioChunks, isRecording]);
 
-  // Process recorded audio with Groq STT
+  // Process recorded audio with Groq STT (Enhanced with multilingual support)
   const processAudio = useCallback(async (chunks) => {
     try {
       const audioBlob = new Blob(chunks, { type: 'audio/webm' });
@@ -96,7 +123,11 @@ const ChatInterface = ({ selectedSheet, user }) => {
       const formData = new FormData();
       formData.append('file', audioBlob, 'recording.webm');
       formData.append('model', 'whisper-large-v3-turbo');
-      formData.append('language', 'en');
+      
+      // Add language parameter if not auto-detect
+      if (selectedLanguage !== 'auto') {
+        formData.append('language', selectedLanguage);
+      }
 
       const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
@@ -119,7 +150,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
       alert(`Error: ${error.message}`);
       triggerHaptic('error');
     }
-  }, []);
+  }, [selectedLanguage]);
 
   // Start/stop recording
   const toggleRecording = useCallback(async () => {
@@ -167,6 +198,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
         recorder.start(1000); // Collect data every second
         setMediaRecorder(recorder);
         setIsRecording(true);
+        setShowLanguageDropdown(false); // Close dropdown when recording starts
         
       } catch (error) {
         console.error('Error accessing microphone:', error);
@@ -177,9 +209,9 @@ const ChatInterface = ({ selectedSheet, user }) => {
   }, [isRecording, mediaRecorder]);
 
   const modeOptions = [
-    { value: 'dpr', label: 'Update DPR', icon: FileText, description: 'Daily Progress Reports' },
-    { value: 'dlr', label: 'Update DLR', icon: BarChart3, description: 'Daily Log Reports' },
-    { value: 'logs', label: 'Analyze Logs', icon: MessageSquare, description: 'Log Analysis' },
+    { value: 'dpr', label: 'Update DPR', icon: FileText, description: 'Update daily progress' },
+    { value: 'dlr', label: 'Update DLR', icon: BarChart3, description: 'Update daily logs' },
+    { value: 'logs', label: 'Analyze Logs', icon: MessageSquare, description: 'Analyze operation logs' },
   ];
 
   const getPlaceholderText = () => {
@@ -421,10 +453,8 @@ const ChatInterface = ({ selectedSheet, user }) => {
               );
             })}
           </div>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            {modeOptions.find(opt => opt.value === mode)?.description}
-          </p>
         </div>
+
 
         <form onSubmit={handleSubmit} className="flex gap-3">
           <div className="flex-1">
@@ -432,10 +462,56 @@ const ChatInterface = ({ selectedSheet, user }) => {
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder={isRecording ? '🎤 Recording...' : getPlaceholderText()}
+              placeholder={isRecording ? `🎤 Recording in ${languageOptions.find(opt => opt.value === selectedLanguage)?.label}...` : getPlaceholderText()}
               className="input w-full h-12 text-base"
               disabled={isLoading}
             />
+          </div>
+          
+          {/* Language Dropdown Button */}
+          <div className="relative" ref={languageDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowLanguageDropdown(!showLanguageDropdown);
+                triggerHaptic('light');
+              }}
+              className="flex items-center justify-center h-12 w-12 rounded-2xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-soft hover:scale-110 bg-white/80 text-gray-600 hover:bg-white hover:shadow-medium focus:ring-primary-500"
+              title={`Current: ${languageOptions.find(opt => opt.value === selectedLanguage)?.label} - Click to change`}
+              disabled={isLoading}
+            >
+              <span className="text-lg">
+                {languageOptions.find(opt => opt.value === selectedLanguage)?.flag}
+              </span>
+            </button>
+            
+            {/* Language Dropdown */}
+            {showLanguageDropdown && (
+              <div className="absolute bottom-full right-0 mb-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+                {languageOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setSelectedLanguage(option.value);
+                      setShowLanguageDropdown(false);
+                      triggerHaptic('light');
+                    }}
+                    className={`w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 ${
+                      selectedLanguage === option.value ? 'bg-primary-50 text-primary-700' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="text-lg">{option.flag}</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{option.label}</div>
+                      <div className="text-xs text-gray-500">{option.description}</div>
+                    </div>
+                    {selectedLanguage === option.value && (
+                      <div className="w-2 h-2 bg-primary-500 rounded-full"></div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           
           {/* Voice Input Button */}
@@ -447,7 +523,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
                 ? 'bg-gradient-to-r from-error-500 to-error-600 text-white hover:shadow-glow animate-pulse-soft' 
                 : 'bg-white/80 text-gray-600 hover:bg-white hover:shadow-medium focus:ring-primary-500'
             }`}
-            title={isRecording ? 'Stop recording' : 'Start voice input'}
+            title={isRecording ? 'Stop recording' : `Start voice input (${languageOptions.find(opt => opt.value === selectedLanguage)?.label})`}
             disabled={isLoading}
           >
             {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
