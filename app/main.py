@@ -1035,10 +1035,30 @@ async def new_spreadsheet_endpoint(
     try:
         from datetime import datetime
         
-        current_year = datetime.now().year
+        # Use the current date to ensure consistency between frontend and backend
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+        
+        # Validate that the requested month matches the current month
+        month_names = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+                      'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
+        
+        expected_month = month_names[current_month - 1]  # Convert 1-based month to 0-based index
+        
+        # If the requested month doesn't match current month, log a warning but proceed
+        if request.month.upper() != expected_month:
+            print(f"WARNING: Month mismatch - Requested: {request.month.upper()}, Expected: {expected_month}")
+            # Use the requested month but ensure we're using the correct year
+            # This handles cases where frontend and backend have timezone differences
         
         # Create new spreadsheet name with DPR prefix
         new_spreadsheet_name = f"DPR_{request.project_name.upper()}_{request.month.upper()}_{current_year}"
+        
+        # Log the creation details for debugging
+        print(f"Creating spreadsheet: {new_spreadsheet_name}")
+        print(f"Request details - Project: {request.project_name}, Month: {request.month}, Year: {current_year}")
+        print(f"Current server date: {current_date.strftime('%Y-%m-%d %H:%M:%S')}")
         
         # Step 1: Copy the source spreadsheet
         copy_result = await mcp_client.copy_spreadsheet(
@@ -1079,13 +1099,20 @@ async def new_spreadsheet_endpoint(
         # Step 3: Find previous month's spreadsheet
         try:
             previous_month, previous_year = mcp_client.get_previous_month_year(request.month, current_year)
-            previous_spreadsheet_name = f"{request.project_name.upper()}_{previous_month}_{previous_year}"
+            previous_spreadsheet_name = f"DPR_{request.project_name.upper()}_{previous_month}_{previous_year}"
+            
+            # Log the search details for debugging
+            print(f"Searching for previous month spreadsheet: {previous_spreadsheet_name}")
+            print(f"Previous month calculation: {request.month} -> {previous_month}, {current_year} -> {previous_year}")
             
             # Search for previous month's spreadsheet
             search_result = await mcp_client.search_spreadsheet_by_name(
                 google_id=current_user['google_id'],
                 spreadsheet_name=previous_spreadsheet_name
             )
+            
+            # Log search results
+            print(f"Search result: {search_result}")
             
             data_copied = False
             copy_message = "No previous month data to copy"

@@ -1275,15 +1275,23 @@ class MCPGoogleSheetsClient:
             
             files = results.get('files', [])
             
+            # Log all found files for debugging
+            print(f"Search query: {query}")
+            print(f"Found {len(files)} files matching '{spreadsheet_name}':")
+            for i, file in enumerate(files):
+                print(f"  {i+1}. {file['name']} (ID: {file['id']}, Created: {file.get('createdTime')}, Modified: {file.get('modifiedTime')})")
+            
             if files:
                 # Return the first match (most recent if multiple)
+                selected_file = files[0]
+                print(f"Selected file: {selected_file['name']} (ID: {selected_file['id']})")
                 return {
                     "success": True,
                     "found": True,
-                    "spreadsheet_id": files[0]['id'],
-                    "name": files[0]['name'],
-                    "created_time": files[0].get('createdTime'),
-                    "modified_time": files[0].get('modifiedTime')
+                    "spreadsheet_id": selected_file['id'],
+                    "name": selected_file['name'],
+                    "created_time": selected_file.get('createdTime'),
+                    "modified_time": selected_file.get('modifiedTime')
                 }
             else:
                 return {
@@ -1334,10 +1342,16 @@ class MCPGoogleSheetsClient:
                 'name': new_name
             }
             
+            # Log the copy operation details
+            print(f"Copying spreadsheet - Source ID: {source_spreadsheet_id}, New name: {new_name}")
+            
             copied_file = drive_service.files().copy(
                 fileId=source_spreadsheet_id,
                 body=copy_request
             ).execute()
+            
+            # Log the copy result
+            print(f"Copy successful - New ID: {copied_file['id']}, New name: {copied_file['name']}")
             
             return {
                 "success": True,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key, Menu, X, Upload, CheckCircle, AlertCircle } from 'lucide-react';
+import { LogOut, Plus, FileText, MessageSquare, BarChart3, Key, Menu, X, Upload, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { authAPI, documentsAPI, workspaceAPI } from '../api';
 import Navigation from '../components/Navigation';
 import ChatInterface from '../components/ChatInterface';
@@ -137,11 +137,17 @@ const Dashboard = () => {
     setShowApiKeyModal(true);
   };
 
+  const handleOpenSpreadsheet = () => {
+    if (selectedSheet?.webViewLink) {
+      window.open(selectedSheet.webViewLink, '_blank');
+    }
+  };
+
   const handleSheetSelect = (sheet) => {
     setSelectedSheet(sheet);
   };
 
-  const handleCreateSpreadsheet = async (projectName = null, useCurrentMonth = false) => {
+  const handleCreateSpreadsheet = async (projectName = null, useCurrentMonth = true) => {
     if (projectName) {
       // Direct creation for specific project
       await createSpreadsheetForProject(projectName, useCurrentMonth);
@@ -155,9 +161,9 @@ const Dashboard = () => {
     setShowCreateModal(true);
   };
 
-  const createSpreadsheetForProject = async (projectName, useCurrentMonth = false) => {
+  const createSpreadsheetForProject = async (projectName, useCurrentMonth = true) => {
     try {
-      // Get current date and calculate month (next month or current month)
+      // Get current date and calculate month (current month or next month)
       const now = new Date();
       const targetMonth = useCurrentMonth 
         ? new Date(now.getFullYear(), now.getMonth(), 1)
@@ -170,6 +176,16 @@ const Dashboard = () => {
       
       const monthName = monthNames[targetMonth.getMonth()];
       const year = targetMonth.getFullYear();
+      
+      // Log the date calculation for debugging
+      console.log('Date calculation details:', {
+        useCurrentMonth,
+        now: now.toISOString(),
+        targetMonth: targetMonth.toISOString(),
+        monthName,
+        year,
+        monthIndex: targetMonth.getMonth()
+      });
       
       // Find DPR_FORMAT sheet to use as template
       const dprFormatSheet = availableSheets?.find(sheet => 
@@ -277,45 +293,65 @@ const Dashboard = () => {
     );
   }
 
-  // Header component for the layout
+  // Header components for the layout
+  const headerLeft = (
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200">
+        <Logo size="md" />
+      </div>
+      <div className="hidden sm:block">
+        <h1 className="text-xl font-semibold text-gray-900">AI Works Tracker</h1>
+        <p className="text-sm text-gray-600">
+          Welcome back, {user?.name || 'User'}
+        </p>
+      </div>
+      <div className="sm:hidden">
+        <h1 className="text-lg font-semibold text-gray-900">AI Works Tracker</h1>
+      </div>
+    </div>
+  );
+
+  const headerRight = (
+    <div className="flex items-center gap-2">
+      <Button
+        onClick={handleOpenSpreadsheet}
+        variant="ghost"
+        size="sm"
+        className="flex items-center gap-2"
+        disabled={!selectedSheet?.webViewLink}
+        title={selectedSheet?.webViewLink ? "Open in Google Sheets" : "No spreadsheet selected"}
+      >
+        <ExternalLink className="w-4 h-4" />
+        <span className="hidden lg:inline">Open Sheet</span>
+      </Button>
+      
+      <Button
+        onClick={handleManageApiKey}
+        variant="ghost"
+        size="sm"
+        className="flex items-center gap-2"
+      >
+        <Key className="w-4 h-4" />
+        <span className="hidden lg:inline">API Key</span>
+      </Button>
+      
+      <Button
+        onClick={handleLogout}
+        variant="ghost"
+        size="sm"
+        className="flex items-center gap-2"
+      >
+        <LogOut className="w-4 h-4" />
+        <span className="hidden lg:inline">Logout</span>
+      </Button>
+    </div>
+  );
+
+  // For mobile, combine both parts
   const header = (
     <div className="flex items-center justify-between w-full">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-gray-200">
-          <Logo size="md" />
-        </div>
-        <div className="hidden sm:block">
-          <h1 className="text-xl font-semibold text-gray-900">AI Works Tracker</h1>
-          <p className="text-sm text-gray-600">
-            Welcome back, {user?.name || 'User'}
-          </p>
-        </div>
-        <div className="sm:hidden">
-          <h1 className="text-lg font-semibold text-gray-900">AI Works Tracker</h1>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <Button
-          onClick={handleManageApiKey}
-          variant="ghost"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <Key className="w-4 h-4" />
-          <span className="hidden lg:inline">API Key</span>
-        </Button>
-        
-        <Button
-          onClick={handleLogout}
-          variant="ghost"
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="hidden lg:inline">Logout</span>
-        </Button>
-      </div>
+      {headerLeft}
+      {headerRight}
     </div>
   );
 
@@ -394,7 +430,12 @@ const Dashboard = () => {
 
   return (
     <>
-      <AppLayout header={header} sidebar={sidebar}>
+      <AppLayout 
+        header={header} 
+        headerLeft={headerLeft}
+        headerRight={headerRight}
+        sidebar={sidebar}
+      >
         {mainContent}
       </AppLayout>
 
