@@ -167,4 +167,23 @@ export const workspaceAPI = {
   uploadDprFormat: () => apiClient.post('/upload-dpr-format'),
 };
 
+export const chatHistoryAPI = {
+  // Get chat history for a user and sheet
+  getChatHistory: (mobileNumber, sheetId, date = null) => {
+    const url = `/chat-history/${mobileNumber}/${sheetId}${date ? `?date=${date}` : ''}`;
+    return apiClient.get(url);
+  },
+  
+  // Save a conversation (user message + assistant response)
+  saveConversation: (data) => apiClient.post('/chat-history/save', data),
+  
+  // Get available conversation dates
+  getChatDates: (mobileNumber, sheetId) => 
+    apiClient.get(`/chat-history/${mobileNumber}/${sheetId}/dates`),
+  
+  // Clear all chat history for a user and sheet
+  clearChatHistory: (mobileNumber, sheetId) => 
+    apiClient.delete(`/chat-history/${mobileNumber}/${sheetId}`),
+};
+
 export default apiClient;

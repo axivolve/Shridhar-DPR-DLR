@@ -11,7 +11,7 @@ from app.google_auth import (
     write_hello_world_to_sheet,
     list_google_sheets
 )
-from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse, AnalyzeLogsRequest, AnalyzeLogsResponse, LoginRequest, SignupRequest, ProfileCompletionRequest, AuthResponse
+from app.models import TokenResponse, WriteResponse, DocumentListResponse, SheetDataResponse, ColumnDataResponse, UpdatedSheetRequest, UpdatedSheetResponse, DPRUpdationResult, RowDataResponse, CopySpreadsheetRequest, CopySpreadsheetResponse, DLRUpdationResult, UpdatedDLRRequest, UpdatedDLRResponse, AnalyzeLogsRequest, AnalyzeLogsResponse, LoginRequest, SignupRequest, ProfileCompletionRequest, AuthResponse, ChatHistoryRequest, ChatHistoryResponse, SaveChatMessageRequest, ChatMessage
 from app.mcp_client import mcp_client
 from app.llm_response import get_support_agent, get_dlr_support_agent, get_logs_support_agent, prompt_builder, prompt_builder_for_dlr_updation
 from app.fuzzy_matching import get_best_fuzzy_matches
@@ -24,7 +24,7 @@ from app.simple_auth import (
     verify_simple_jwt_token,
     create_simple_jwt_token
 )
-from app.database import get_simple_user_by_mobile, create_simple_user
+from app.database import get_simple_user_by_mobile, create_simple_user, save_chat_message, get_chat_history, get_chat_dates, clear_chat_history
 from typing import Optional
 
 app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
@@ -1533,6 +1533,154 @@ async def analyze_logs(
             feedback="",
             error=f"Processing error: {str(e)}"
         )
+
+# Chat History Management Endpoints
+@app.get("/chat-history/{mobile_number}/{sheet_id}", response_model=ChatHistoryResponse)
+async def get_user_chat_history(
+    mobile_number: str, 
+    sheet_id: str, 
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_simple_user)
+):
+    """Get chat history for a specific user and sheet, optionally filtered by date"""
+    try:
+        # Debug logging
+        print(f"Requested mobile_number: {mobile_number}")
+        print(f"Current user data: {current_user}")
+        
+        # Simplified authentication: just ensure user is authenticated
+        user_mobile = current_user.get('mobile_number')  # Simple auth
+        user_google_id = current_user.get('google_id')   # Google auth
+        
+        if not (user_mobile or user_google_id):
+            raise HTTPException(status_code=403, detail="Invalid user authentication")
+        
+        print(f"Authenticated user accessing chat for mobile: {mobile_number}")
+        
+        # Get chat history
+        messages_data = await get_chat_history(mobile_number, sheet_id, date)
+        if messages_data is None:
+            return ChatHistoryResponse(
+                success=False,
+                error="Failed to retrieve chat history"
+            )
+        
+        # Get available dates for dropdown
+        available_dates = await get_chat_dates(mobile_number, sheet_id)
+        
+        # Convert to ChatMessage objects
+        messages = []
+        for msg_data in messages_data:
+            messages.append(ChatMessage(**msg_data))
+        
+        return ChatHistoryResponse(
+            success=True,
+            messages=messages,
+            dates=available_dates,
+            total_count=len(messages)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting chat history: {e}")
+        return ChatHistoryResponse(
+            success=False,
+            error=f"Error retrieving chat history: {str(e)}"
+        )
+
+@app.post("/chat-history/save")
+async def save_chat_conversation(
+    request: SaveChatMessageRequest,
+    current_user: dict = Depends(get_current_simple_user)
+):
+    """Save a conversation pair (user message + assistant response)"""
+    try:
+        # Debug logging
+        print(f"Save request mobile_number: {request.mobile_number}")
+        print(f"Current user data: {current_user}")
+        
+        # Simplified authentication: just ensure user is authenticated
+        # The mobile number in the request will be used as the identifier for chat history
+        user_mobile = current_user.get('mobile_number')  # Simple auth
+        user_google_id = current_user.get('google_id')   # Google auth
+        
+        if not (user_mobile or user_google_id):
+            raise HTTPException(status_code=403, detail="Invalid user authentication")
+        
+        print(f"Authenticated user saving chat for mobile: {request.mobile_number}")
+        
+        success = await save_chat_message(
+            mobile_number=request.mobile_number,
+            user_name=request.user_name,
+            sheet_id=request.sheet_id,
+            sheet_name=request.sheet_name,
+            user_message=request.user_message,
+            assistant_message=request.assistant_message,
+            mode=request.mode
+        )
+        
+        if success:
+            return {"success": True, "message": "Chat conversation saved successfully"}
+        else:
+            return {"success": False, "error": "Failed to save chat conversation"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error saving chat conversation: {e}")
+        return {"success": False, "error": f"Error saving conversation: {str(e)}"}
+
+@app.get("/chat-history/{mobile_number}/{sheet_id}/dates")
+async def get_chat_history_dates(
+    mobile_number: str,
+    sheet_id: str,
+    current_user: dict = Depends(get_current_simple_user)
+):
+    """Get available conversation dates for a user and sheet"""
+    try:
+        # Simplified authentication: just ensure user is authenticated
+        user_mobile = current_user.get('mobile_number')  # Simple auth
+        user_google_id = current_user.get('google_id')   # Google auth
+        
+        if not (user_mobile or user_google_id):
+            raise HTTPException(status_code=403, detail="Invalid user authentication")
+        
+        dates = await get_chat_dates(mobile_number, sheet_id)
+        return {"success": True, "dates": dates}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting chat dates: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.delete("/chat-history/{mobile_number}/{sheet_id}")
+async def clear_user_chat_history(
+    mobile_number: str,
+    sheet_id: str,
+    current_user: dict = Depends(get_current_simple_user)
+):
+    """Clear all chat history for a specific user and sheet"""
+    try:
+        # Simplified authentication: just ensure user is authenticated
+        user_mobile = current_user.get('mobile_number')  # Simple auth
+        user_google_id = current_user.get('google_id')   # Google auth
+        
+        if not (user_mobile or user_google_id):
+            raise HTTPException(status_code=403, detail="Invalid user authentication")
+        
+        success = await clear_chat_history(mobile_number, sheet_id)
+        if success:
+            return {"success": True, "message": "Chat history cleared successfully"}
+        else:
+            return {"success": False, "error": "Failed to clear chat history"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error clearing chat history: {e}")
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

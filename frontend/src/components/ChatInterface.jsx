@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff, Calendar } from 'lucide-react';
-import { dprAPI, dlrAPI, logsAPI } from '../api';
+import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff, Calendar, History, ChevronDown, Trash2 } from 'lucide-react';
+import { dprAPI, dlrAPI, logsAPI, chatHistoryAPI } from '../api';
 import Button from './ui/Button';
 import { Card, CardContent } from './ui/Card';
 import LoadingSpinner from './ui/LoadingSpinner';
@@ -15,6 +15,14 @@ const ChatInterface = ({ selectedSheet, user }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const languageDropdownRef = useRef(null);
+
+  // Chat history state
+  const [availableDates, setAvailableDates] = useState([]);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const dateDropdownRef = useRef(null);
 
   // Audio recording state
   const [mediaRecorder, setMediaRecorder] = useState(null);
@@ -84,6 +92,9 @@ const ChatInterface = ({ selectedSheet, user }) => {
       if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target)) {
         setShowLanguageDropdown(false);
       }
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target)) {
+        setShowDateDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -91,6 +102,30 @@ const ChatInterface = ({ selectedSheet, user }) => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Load chat history when sheet or user changes
+  useEffect(() => {
+    console.log('User data in ChatInterface:', user);
+    console.log('Selected sheet:', selectedSheet);
+    if (selectedSheet && user?.phone_number) {
+      console.log('Loading chat history for:', user.phone_number, selectedSheet.id);
+      loadChatDates();
+      loadTodaysChatHistory();
+    } else {
+      console.log('Cannot load chat history - missing data:', {
+        hasSheet: !!selectedSheet,
+        hasPhoneNumber: !!user?.phone_number,
+        phoneNumber: user?.phone_number
+      });
+    }
+  }, [selectedSheet, user]);
+
+  // Load chat history when date selection changes
+  useEffect(() => {
+    if (selectedDate && selectedSheet && user?.phone_number) {
+      loadChatHistory(selectedDate);
+    }
+  }, [selectedDate]);
 
   // Initialize media recorder cleanup
   useEffect(() => {
@@ -108,6 +143,99 @@ const ChatInterface = ({ selectedSheet, user }) => {
       setAudioChunks([]);
     }
   }, [audioChunks, isRecording]);
+
+  // Chat History Functions
+  const loadChatDates = async () => {
+    try {
+      const response = await chatHistoryAPI.getChatDates(user.phone_number, selectedSheet.id);
+      if (response.data.success) {
+        setAvailableDates(response.data.dates);
+      }
+    } catch (error) {
+      console.error('Error loading chat dates:', error);
+    }
+  };
+
+  const loadTodaysChatHistory = async () => {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    await loadChatHistory(today);
+    setSelectedDate(today);
+  };
+
+  const loadChatHistory = async (date) => {
+    if (!user?.phone_number || !selectedSheet?.id) return;
+    
+    setIsLoadingHistory(true);
+    try {
+      const response = await chatHistoryAPI.getChatHistory(user.phone_number, selectedSheet.id, date);
+      if (response.data.success) {
+        // Convert backend messages to frontend format
+        const formattedMessages = response.data.messages.map(msg => ({
+          type: msg.message_type,
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+          mode: msg.mode
+        }));
+        setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const saveChatMessage = async (userMessage, assistantMessage) => {
+    if (!user?.phone_number || !selectedSheet?.id) {
+      console.log('Cannot save chat message - missing data:', {
+        hasPhoneNumber: !!user?.phone_number,
+        phoneNumber: user?.phone_number,
+        hasSheetId: !!selectedSheet?.id
+      });
+      return;
+    }
+    
+    try {
+      const saveData = {
+        mobile_number: user.phone_number,
+        user_name: user.name || user.email || 'Unknown User',
+        sheet_id: selectedSheet.id,
+        sheet_name: selectedSheet.name,
+        user_message: userMessage,
+        assistant_message: assistantMessage,
+        mode: mode
+      };
+      
+      console.log('Saving chat message with data:', saveData);
+      
+      await chatHistoryAPI.saveConversation(saveData);
+      
+      // Refresh dates list if this is a new date
+      const today = new Date().toISOString().split('T')[0];
+      if (!availableDates.includes(today)) {
+        loadChatDates();
+      }
+    } catch (error) {
+      console.error('Error saving chat message:', error);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!user?.phone_number || !selectedSheet?.id) return;
+    
+    if (confirm('Are you sure you want to clear all chat history for this spreadsheet?')) {
+      try {
+        const response = await chatHistoryAPI.clearChatHistory(user.phone_number, selectedSheet.id);
+        if (response.data.success) {
+          setMessages([]);
+          setAvailableDates([]);
+          setSelectedDate('');
+        }
+      } catch (error) {
+        console.error('Error clearing chat history:', error);
+      }
+    }
+  };
 
   // Process recorded audio with Groq STT (Enhanced with multilingual support)
   const processAudio = useCallback(async (chunks) => {
@@ -292,6 +420,10 @@ const ChatInterface = ({ selectedSheet, user }) => {
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Save chat history (user message + assistant response)
+      await saveChatMessage(inputMessage, feedbackContent);
+      
     } catch (error) {
       console.error('Error:', error);
       const errorMessage = {
@@ -302,6 +434,10 @@ const ChatInterface = ({ selectedSheet, user }) => {
         mode: mode,
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // Save error message to history as well
+      await saveChatMessage(inputMessage, errorMessage.content);
+      
     } finally {
       setIsLoading(false);
     }
@@ -336,7 +472,92 @@ const ChatInterface = ({ selectedSheet, user }) => {
               );
             })()}
           </div>
+          
+          {/* Chat History Controls */}
+          <div className="flex items-center gap-2 ml-4">
+            {/* Date Selection Dropdown */}
+            {availableDates.length > 0 && (
+              <div className="relative" ref={dateDropdownRef}>
+                <Button
+                  onClick={() => setShowDateDropdown(!showDateDropdown)}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                >
+                  <Calendar className="w-3 h-3" />
+                  {selectedDate ? new Date(selectedDate).toLocaleDateString() : 'Today'}
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+                
+                {showDateDropdown && (
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                    <div className="p-2">
+                      <div className="text-xs font-medium text-gray-500 mb-2">Select Date</div>
+                      {availableDates.map((date) => (
+                        <button
+                          key={date}
+                          onClick={() => {
+                            setSelectedDate(date);
+                            setShowDateDropdown(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                            selectedDate === date
+                              ? 'bg-primary-100 text-primary-800'
+                              : 'hover:bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {new Date(date).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: date.includes(new Date().getFullYear().toString()) ? undefined : 'numeric'
+                          })}
+                          {date === new Date().toISOString().split('T')[0] && (
+                            <span className="text-xs text-primary-600 ml-2">(Today)</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* History Toggle */}
+            <Button
+              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              title="Toggle History Panel"
+            >
+              <History className="w-3 h-3" />
+            </Button>
+            
+            {/* Clear History */}
+            {messages.length > 0 && (
+              <Button
+                onClick={clearHistory}
+                variant="outline"
+                size="sm"
+                className="text-xs text-red-600 hover:text-red-700"
+                title="Clear Chat History"
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
         </div>
+        
+        {/* Loading History Indicator */}
+        {isLoadingHistory && (
+          <div className="mt-2 text-center">
+            <div className="inline-flex items-center gap-2 text-sm text-gray-600">
+              <LoadingSpinner size="sm" />
+              Loading chat history...
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Messages */}

@@ -1,7 +1,7 @@
 from supabase import create_client, Client
 from app.config import SUPABASE_URL, SUPABASE_KEY
 from app.models import User, SimpleUser
-from typing import Optional
+from typing import Optional, List
 import json
 
 # Initialize Supabase client
@@ -166,3 +166,88 @@ async def get_simple_user_by_id(user_id: str) -> Optional[SimpleUser]:
     except Exception as e:
         print(f"Database error getting simple user by ID: {e}")
         return None
+
+# Chat History Functions
+async def save_chat_message(mobile_number: str, user_name: str, sheet_id: str, sheet_name: str, 
+                          user_message: str, assistant_message: str, mode: str = 'dpr') -> bool:
+    """Save a conversation pair (user message + assistant response) to chat history"""
+    try:
+        from datetime import date
+        today = date.today().isoformat()
+        
+        # Prepare messages data
+        messages_data = [
+            {
+                'mobile_number': mobile_number,
+                'user_name': user_name,
+                'sheet_id': sheet_id,
+                'sheet_name': sheet_name,
+                'message_type': 'user',
+                'content': user_message,
+                'mode': mode,
+                'conversation_date': today,
+                'created_at': 'now()',
+                'updated_at': 'now()'
+            },
+            {
+                'mobile_number': mobile_number,
+                'user_name': user_name,
+                'sheet_id': sheet_id,
+                'sheet_name': sheet_name,
+                'message_type': 'assistant',
+                'content': assistant_message,
+                'mode': mode,
+                'conversation_date': today,
+                'created_at': 'now()',
+                'updated_at': 'now()'
+            }
+        ]
+        
+        # Insert both messages
+        result = supabase.table('chat_history').insert(messages_data).execute()
+        return len(result.data) == 2
+        
+    except Exception as e:
+        print(f"Database error saving chat message: {e}")
+        return False
+
+async def get_chat_history(mobile_number: str, sheet_id: str, date_filter: Optional[str] = None) -> Optional[List[dict]]:
+    """Get chat history for a specific user and sheet, optionally filtered by date"""
+    try:
+        query = supabase.table('chat_history').select('*').eq('mobile_number', mobile_number).eq('sheet_id', sheet_id)
+        
+        if date_filter:
+            query = query.eq('conversation_date', date_filter)
+        
+        result = query.order('created_at', desc=False).execute()
+        return result.data if result.data else []
+        
+    except Exception as e:
+        print(f"Database error getting chat history: {e}")
+        return None
+
+async def get_chat_dates(mobile_number: str, sheet_id: str) -> List[str]:
+    """Get list of dates when user had conversations for a specific sheet"""
+    try:
+        result = supabase.table('chat_history').select('conversation_date').eq('mobile_number', mobile_number).eq('sheet_id', sheet_id).execute()
+        
+        if result.data:
+            # Extract unique dates and sort them
+            dates = list(set([item['conversation_date'] for item in result.data]))
+            dates.sort(reverse=True)  # Most recent first
+            return dates
+        return []
+        
+    except Exception as e:
+        print(f"Database error getting chat dates: {e}")
+        return []
+
+async def clear_chat_history(mobile_number: str, sheet_id: str) -> bool:
+    """Clear all chat history for a specific user and sheet"""
+    try:
+        result = supabase.table('chat_history').delete().eq('mobile_number', mobile_number).eq('sheet_id', sheet_id).execute()
+        return True
+        
+    except Exception as e:
+        print(f"Database error clearing chat history: {e}")
+        return False

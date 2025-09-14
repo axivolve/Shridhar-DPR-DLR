@@ -195,3 +195,38 @@ class AuthResponse(BaseModel):
     requires_profile_completion: bool = False
     requires_signup: bool = False
     error: Optional[str] = None
+
+# Chat History Models
+class ChatMessage(BaseModel):
+    id: Optional[str] = None
+    mobile_number: str
+    user_name: Optional[str] = None
+    sheet_id: str
+    sheet_name: Optional[str] = None
+    message_type: str  # 'user' or 'assistant'
+    content: str
+    mode: str = 'dpr'  # 'dpr', 'dlr', 'logs', 'planned'
+    conversation_date: Optional[str] = None  # YYYY-MM-DD format
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class ChatHistoryRequest(BaseModel):
+    mobile_number: str
+    sheet_id: str
+    date: Optional[str] = None  # Optional date filter (YYYY-MM-DD)
+
+class ChatHistoryResponse(BaseModel):
+    success: bool
+    messages: List[ChatMessage] = []
+    dates: List[str] = []  # Available dates for dropdown
+    total_count: int = 0
+    error: Optional[str] = None
+
+class SaveChatMessageRequest(BaseModel):
+    mobile_number: str
+    user_name: str
+    sheet_id: str
+    sheet_name: str
+    user_message: str
+    assistant_message: str
+    mode: str = 'dpr'
