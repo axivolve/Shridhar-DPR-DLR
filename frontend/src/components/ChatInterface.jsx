@@ -251,7 +251,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
       let response;
       const requestBody = {
         site_engineer_name: user?.name || user?.email || 'Unknown User',
-        phone_number: user?.phone_number || '1234567890',
+        phone_number: user?.phone_number || user?.mobile_number || 'Not Available',
         users_query: inputMessage,
       };
 

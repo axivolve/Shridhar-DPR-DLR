@@ -31,7 +31,7 @@ const Dashboard = () => {
           setUser({
             name: userData.name || userData.username,
             email: userData.email,
-            phone_number: userData.phone_number
+            phone_number: userData.mobile_number || userData.phone_number
           });
         } else {
           // Fallback to API call if no stored user
