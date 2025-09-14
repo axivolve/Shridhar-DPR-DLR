@@ -251,3 +251,13 @@ async def clear_chat_history(mobile_number: str, sheet_id: str) -> bool:
     except Exception as e:
         print(f"Database error clearing chat history: {e}")
         return False
+
+async def clear_chat_history_by_date(mobile_number: str, sheet_id: str, date: str) -> bool:
+    """Clear chat history for a specific user, sheet, and date"""
+    try:
+        result = supabase.table('chat_history').delete().eq('mobile_number', mobile_number).eq('sheet_id', sheet_id).eq('conversation_date', date).execute()
+        return True
+        
+    except Exception as e:
+        print(f"Database error clearing chat history by date: {e}")
+        return False

@@ -24,7 +24,7 @@ from app.simple_auth import (
     verify_simple_jwt_token,
     create_simple_jwt_token
 )
-from app.database import get_simple_user_by_mobile, create_simple_user, save_chat_message, get_chat_history, get_chat_dates, clear_chat_history
+from app.database import get_simple_user_by_mobile, create_simple_user, save_chat_message, get_chat_history, get_chat_dates, clear_chat_history, clear_chat_history_by_date
 from typing import Optional
 
 app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
@@ -1680,6 +1680,34 @@ async def clear_user_chat_history(
         raise
     except Exception as e:
         print(f"Error clearing chat history: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.delete("/chat-history/{mobile_number}/{sheet_id}/date/{date}")
+async def clear_user_chat_history_by_date(
+    mobile_number: str,
+    sheet_id: str,
+    date: str,
+    current_user: dict = Depends(get_current_simple_user)
+):
+    """Clear chat history for a specific user, sheet, and date"""
+    try:
+        # Simplified authentication: just ensure user is authenticated
+        user_mobile = current_user.get('mobile_number')  # Simple auth
+        user_google_id = current_user.get('google_id')   # Google auth
+        
+        if not (user_mobile or user_google_id):
+            raise HTTPException(status_code=403, detail="Invalid user authentication")
+        
+        success = await clear_chat_history_by_date(mobile_number, sheet_id, date)
+        if success:
+            return {"success": True, "message": f"Chat history cleared for {date}"}
+        else:
+            return {"success": False, "error": "Failed to clear chat history for the specified date"}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error clearing chat history by date: {e}")
         return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":

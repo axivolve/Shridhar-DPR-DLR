@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff, Calendar, History, ChevronDown, Trash2 } from 'lucide-react';
+import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff, Calendar, ChevronDown, Trash2 } from 'lucide-react';
 import { dprAPI, dlrAPI, logsAPI, chatHistoryAPI } from '../api';
 import Button from './ui/Button';
 import { Card, CardContent } from './ui/Card';
@@ -21,7 +21,6 @@ const ChatInterface = ({ selectedSheet, user }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const dateDropdownRef = useRef(null);
 
   // Audio recording state
@@ -220,19 +219,29 @@ const ChatInterface = ({ selectedSheet, user }) => {
     }
   };
 
-  const clearHistory = async () => {
+  const clearHistoryByDate = async (date) => {
     if (!user?.phone_number || !selectedSheet?.id) return;
     
-    if (confirm('Are you sure you want to clear all chat history for this spreadsheet?')) {
+    const formattedDate = new Date(date).toLocaleDateString();
+    if (confirm(`Are you sure you want to clear chat history for ${formattedDate}?`)) {
       try {
-        const response = await chatHistoryAPI.clearChatHistory(user.phone_number, selectedSheet.id);
+        const response = await chatHistoryAPI.clearChatHistoryByDate(user.phone_number, selectedSheet.id, date);
         if (response.data.success) {
-          setMessages([]);
-          setAvailableDates([]);
-          setSelectedDate('');
+          // If we're currently viewing this date, clear the messages
+          if (selectedDate === date) {
+            setMessages([]);
+          }
+          // Refresh the dates list
+          loadChatDates();
+          // If we cleared today's date and no other dates exist, select today
+          const today = new Date().toISOString().split('T')[0];
+          if (date === today) {
+            setSelectedDate(today);
+          }
         }
       } catch (error) {
-        console.error('Error clearing chat history:', error);
+        console.error('Error clearing chat history by date:', error);
+        alert('Failed to clear chat history for this date');
       }
     }
   };
@@ -490,61 +499,51 @@ const ChatInterface = ({ selectedSheet, user }) => {
                 </Button>
                 
                 {showDateDropdown && (
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                  <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                     <div className="p-2">
                       <div className="text-xs font-medium text-gray-500 mb-2">Select Date</div>
                       {availableDates.map((date) => (
-                        <button
+                        <div 
                           key={date}
-                          onClick={() => {
-                            setSelectedDate(date);
-                            setShowDateDropdown(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                          className={`flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
                             selectedDate === date
                               ? 'bg-primary-100 text-primary-800'
                               : 'hover:bg-gray-100 text-gray-700'
                           }`}
                         >
-                          {new Date(date).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: date.includes(new Date().getFullYear().toString()) ? undefined : 'numeric'
-                          })}
-                          {date === new Date().toISOString().split('T')[0] && (
-                            <span className="text-xs text-primary-600 ml-2">(Today)</span>
-                          )}
-                        </button>
+                          <button
+                            onClick={() => {
+                              setSelectedDate(date);
+                              setShowDateDropdown(false);
+                            }}
+                            className="flex-1 text-left"
+                          >
+                            {new Date(date).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: date.includes(new Date().getFullYear().toString()) ? undefined : 'numeric'
+                            })}
+                            {date === new Date().toISOString().split('T')[0] && (
+                              <span className="text-xs text-primary-600 ml-2">(Today)</span>
+                            )}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              clearHistoryByDate(date);
+                            }}
+                            className="ml-2 p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded"
+                            title={`Delete history for ${new Date(date).toLocaleDateString()}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
-            )}
-            
-            {/* History Toggle */}
-            <Button
-              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              title="Toggle History Panel"
-            >
-              <History className="w-3 h-3" />
-            </Button>
-            
-            {/* Clear History */}
-            {messages.length > 0 && (
-              <Button
-                onClick={clearHistory}
-                variant="outline"
-                size="sm"
-                className="text-xs text-red-600 hover:text-red-700"
-                title="Clear Chat History"
-              >
-                <Trash2 className="w-3 h-3" />
-              </Button>
             )}
           </div>
         </div>

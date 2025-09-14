@@ -184,6 +184,10 @@ export const chatHistoryAPI = {
   // Clear all chat history for a user and sheet
   clearChatHistory: (mobileNumber, sheetId) => 
     apiClient.delete(`/chat-history/${mobileNumber}/${sheetId}`),
+  
+  // Clear chat history for a specific date
+  clearChatHistoryByDate: (mobileNumber, sheetId, date) => 
+    apiClient.delete(`/chat-history/${mobileNumber}/${sheetId}/date/${date}`),
 };
 
 export default apiClient;
