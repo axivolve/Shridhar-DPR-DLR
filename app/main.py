@@ -652,7 +652,7 @@ async def update_dpr(
                     google_id=current_user['google_id'],
                     spreadsheet_id=sheet_id,
                     sheet="DPR",
-                    range_name="8AV:8BZ"
+                    range_name="8AV:8BZ" #8P:8AT
                 )
                 
                 if not date_mapping_result.get('success', False):
@@ -768,6 +768,259 @@ async def update_dpr(
             error=f"Processing error: {str(e)}"
         )
 
+@app.post("/update-dpr-planned/{sheet_id}", response_model=UpdatedSheetResponse)
+async def update_dpr(
+    sheet_id: str,
+    request: UpdatedSheetRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Process sheet data through LLM for DPR updates and perform actual cell updates.
+    
+    This endpoint:
+    1. Gets element data from column B starting at row 10
+    2. Gets activity data from range C10:E96  
+    3. Combines data with user query using prompt builder
+    4. Processes through LLM for structured analysis
+    5. Gets date-column mapping from row 8AV:8BZ
+    6. Calculates target cells (element_index + activity_index)
+    7. Performs actual cell updates in the spreadsheet
+    8. Logs all update operations to LOG sheet
+    
+    Args:
+        sheet_id: Google Sheets spreadsheet ID
+        request: Contains site_engineer_name, phone_number, users_query
+        
+    Returns:
+        Structured response with LLM analysis, update results, and agent feedback
+        
+    Example Flow:
+        - User: "Villa 101 Excavation done by 40 cubic meter on 8 August 2025"
+        - LLM: element_index=[10], activity_index=[1], quantities=[[40, "add"]], date="08-08-2025"
+        - System: Finds column "BC" for date "08-08-2025", updates cell BC11 (10+1) with +40
+        - Logs: Records operation in LOG sheet with all details
+    """
+    try:
+        # Get element data from column B starting at B10
+        element_result = await mcp_client.get_column_data_with_user_auth(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet="DPR",
+            cell_reference="B10"
+        )
+        
+        if not element_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get element data: {element_result.get('error', 'Unknown error')}")
+        
+        # Get activity data from range C10:E96
+        activity_result = await mcp_client.get_sheet_data_with_user_auth(
+            google_id=current_user['google_id'],
+            spreadsheet_id=sheet_id,
+            sheet="DPR",
+            range_name="C10:E96"
+        )
+        
+        if not activity_result.get('success', False):
+            raise HTTPException(status_code=500, detail=f"Failed to get activity data: {activity_result.get('error', 'Unknown error')}")
+        
+        # Convert activity data to 0-based indexing (same as /mcp/sheet-data endpoint)
+        original_activity_data = activity_result.get('data', {})
+        zero_indexed_activity_data = {}
+        
+        # Convert from actual row numbers to 0-based index for activity data
+        for index, (row_num, row_data) in enumerate(original_activity_data.items()):
+            zero_indexed_activity_data[index] = row_data
+        
+        # Convert data to string format for prompt
+        element_data_str = str(element_result.get('data', {}))
+        activity_data_str = str(zero_indexed_activity_data)
+        
+        # Build prompt using the prompt builder
+        prompt = prompt_builder(
+            element_data=element_data_str,
+            activity_data=activity_data_str,
+            users_query=request.users_query
+        )
+        
+        # Get LLM agent and process the prompt
+        api_key = request.groq_api_key or GROQ_API_KEY
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Groq API key is required. Please provide your API key in the request or configure it in the backend.")
+        
+        try:
+            agent = get_support_agent(api_key)
+            run_response = agent.run(prompt)
+            
+            # Extract the actual result from RunResponse
+            # The agent should return a DPRUpdationResult directly, but it's wrapped in RunResponse
+            if hasattr(run_response, 'content'):
+                llm_response = run_response.content
+            elif hasattr(run_response, 'data'):
+                llm_response = run_response.data
+            else:
+                # If it's already the right type, use it directly
+                llm_response = run_response
+                
+            # Validate that we have a proper DPRUpdationResult
+            if not isinstance(llm_response, DPRUpdationResult):
+                # Try to create one from the response if it's a dict
+                if isinstance(llm_response, dict):
+                    llm_response = DPRUpdationResult(**llm_response)
+                else:
+                    raise ValueError(f"Invalid LLM response type: {type(llm_response)}")
+                    
+        except Exception as llm_error:
+            raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
+        
+        # Validate operation date
+        operation_date = llm_response.operation_date
+        if operation_date:
+            # Validate date format and check if it's not in the future
+            try:
+                from datetime import datetime
+                if operation_date:  # Not empty string
+                    parsed_date = datetime.strptime(operation_date, "%d-%m-%Y")
+                    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    if parsed_date > today:
+                        # Future date detected, use today's date
+                        operation_date = datetime.now().strftime("%d-%m-%Y")
+                        # Update the LLM response
+                        llm_response.operation_date = operation_date
+                        # Update feedback to mention date correction
+                        if llm_response.agent_feedback:
+                            llm_response.agent_feedback[0] += " (Note: Future date corrected to today's date)"
+            except ValueError:
+                # Invalid date format, use today's date
+                operation_date = datetime.now().strftime("%d-%m-%Y")
+                llm_response.operation_date = operation_date
+        
+        # Perform actual cell updates if LLM provided valid data
+        update_summary = "No updates performed"
+        if (llm_response.element_index and llm_response.activity_index and 
+            llm_response.activity_quantities and llm_response.operation_date):
+            
+            try:
+                # Get date-column mapping from row 8AV:8BZ
+                date_mapping_result = await mcp_client.get_row_values_from_range(
+                    google_id=current_user['google_id'],
+                    spreadsheet_id=sheet_id,
+                    sheet="DPR",
+                    range_name="8P:8AT" #
+                )
+                
+                if not date_mapping_result.get('success', False):
+                    raise HTTPException(status_code=500, detail=f"Failed to get date mapping: {date_mapping_result.get('error', 'Unknown error')}")
+                
+                # Find the column that matches the operation date
+                date_data = date_mapping_result.get('data', {})
+                target_column = None
+                
+                for column, date_value in date_data.items():
+                    if date_value == llm_response.operation_date:
+                        target_column = column
+                        break
+                
+                if not target_column:
+                    raise HTTPException(status_code=400, detail=f"No column found for date: {llm_response.operation_date}")
+                
+                # Calculate target cells and prepare updates
+                cell_list = []
+                updation_list = []
+                type_list = []
+                
+                for i in range(len(llm_response.element_index)):
+                    # Calculate row: element_index + activity_index
+                    element_idx = int(llm_response.element_index[i])
+                    activity_idx = int(llm_response.activity_index[i])
+                    target_row = element_idx + activity_idx
+                    
+                    # Create cell reference (e.g., "BC11", "BC98")
+                    cell_ref = f"{target_column}{target_row}"
+                    cell_list.append(cell_ref)
+                    
+                    # Extract quantity and operation type
+                    quantity_str, operation_type = llm_response.activity_quantities[i]
+                    updation_list.append(float(quantity_str))
+                    type_list.append(operation_type)
+                
+                # Perform batch cell updates
+                update_result = await mcp_client.update_cells_with_operations(
+                    google_id=current_user['google_id'],
+                    spreadsheet_id=sheet_id,
+                    sheet="DPR",
+                    cell_list=cell_list,
+                    updation_list=updation_list,
+                    type_list=type_list
+                )
+                
+                if not update_result.get('success', False):
+                    raise HTTPException(status_code=500, detail=f"Failed to update cells: {update_result.get('error', 'Unknown error')}")
+                
+                # Log each update operation
+                for i, result in enumerate(update_result.get('results', [])):
+                    if result.get('success', False):
+                        # Extract row number correctly from cell reference
+                        element_idx = int(llm_response.element_index[i])
+                        activity_idx = int(llm_response.activity_index[i])
+                        calculated_row = element_idx + activity_idx
+                        
+                        await mcp_client.log_update_operation(
+                            google_id=current_user['google_id'],
+                            spreadsheet_id=sheet_id,
+                            site_engineer_name=request.site_engineer_name,
+                            phone_number=request.phone_number,  # Add phone number
+                            updated_row_index=str(calculated_row),  # Use calculated row directly
+                            updated_column_index=target_column,
+                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updation_type=type_list[i],
+                            columns=target_column,
+                            user_query=request.users_query,
+                            feedback=llm_response.agent_feedback[0] if llm_response.agent_feedback else "Update completed",
+                            sheet_name="DPR",  # Always use DPR for this endpoint
+                            operation_date=llm_response.operation_date
+                        )
+                
+                successful_updates = update_result.get('successful_operations', 0)
+                total_updates = update_result.get('total_operations', 0)
+                update_summary = f"Updated {successful_updates}/{total_updates} cells successfully"
+                
+            except HTTPException as e:
+                raise e
+            except Exception as update_error:
+                raise HTTPException(status_code=500, detail=f"Cell update error: {str(update_error)}")
+        
+        # Create summary strings for the response
+        element_summary = f"Column B data from row 10: {len(element_result.get('data', {}))} rows retrieved"
+        activity_summary = f"Range C10:E96 data (0-indexed): {len(zero_indexed_activity_data)} rows retrieved"
+        
+        return UpdatedSheetResponse(
+            success=True,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            sheet_name="DPR",
+            users_query=request.users_query,
+            element_data_summary=element_summary,
+            activity_data_summary=f"{activity_summary}. {update_summary}",
+            llm_result=llm_response
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        return UpdatedSheetResponse(
+            success=False,
+            site_engineer_name=request.site_engineer_name,
+            phone_number=request.phone_number,
+            sheet_id=sheet_id,
+            sheet_name="DPR",
+            users_query=request.users_query,
+            element_data_summary="Failed to retrieve",
+            activity_data_summary="Failed to retrieve", 
+            llm_result=None,
+            error=f"Processing error: {str(e)}"
+        )
 @app.post("/update-dlr/{sheet_id}", response_model=UpdatedDLRResponse)
 async def update_dlr(
     sheet_id: str,

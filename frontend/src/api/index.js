@@ -104,6 +104,16 @@ export const dprAPI = {
     };
     return apiClient.post(`/update-dpr/${sheetId}`, requestData);
   },
+  
+  // Update DPR Planned
+  updateDPRPlanned: (sheetId, data) => {
+    const groqApiKey = localStorage.getItem('groq_api_key');
+    const requestData = {
+      ...data,
+      groq_api_key: groqApiKey
+    };
+    return apiClient.post(`/update-dpr-planned/${sheetId}`, requestData);
+  },
 };
 
 export const dlrAPI = {

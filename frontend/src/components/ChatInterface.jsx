@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff } from 'lucide-react';
+import { Send, FileText, BarChart3, MessageSquare, Bot, User, Loader2, Mic, MicOff, Calendar } from 'lucide-react';
 import { dprAPI, dlrAPI, logsAPI } from '../api';
 import Button from './ui/Button';
 import { Card, CardContent } from './ui/Card';
@@ -210,6 +210,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
 
   const modeOptions = [
     { value: 'dpr', label: 'Update DPR', icon: FileText, description: 'Update daily progress' },
+    { value: 'planned', label: 'Fill Planned', icon: Calendar, description: 'Fill planned progress' },
     { value: 'dlr', label: 'Update DLR', icon: BarChart3, description: 'Update daily logs' },
     { value: 'logs', label: 'Analyze Logs', icon: MessageSquare, description: 'Analyze operation logs' },
   ];
@@ -218,6 +219,8 @@ const ChatInterface = ({ selectedSheet, user }) => {
     switch (mode) {
       case 'dpr':
         return 'Describe the daily progress updates... (e.g., "Completed foundation work for Block A, 50% progress")';
+      case 'planned':
+        return 'Describe the planned progress updates... (e.g., "Plan to complete foundation work for Block A, 50% planned")';
       case 'dlr':
         return 'Describe the daily log activities... (e.g., "Added 10 cubic meters of concrete to Block B")';
       case 'logs':
@@ -254,6 +257,8 @@ const ChatInterface = ({ selectedSheet, user }) => {
 
       if (mode === 'dpr') {
         response = await dprAPI.updateDPR(selectedSheet.id, requestBody);
+      } else if (mode === 'planned') {
+        response = await dprAPI.updateDPRPlanned(selectedSheet.id, requestBody);
       } else if (mode === 'dlr') {
         response = await dlrAPI.updateDLR(selectedSheet.id, requestBody);
       } else if (mode === 'logs') {
@@ -265,7 +270,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
       // Extract feedback based on response type and mode
       let feedbackContent = 'Operation completed successfully';
       
-      if (mode === 'dpr' && response.data.llm_result?.agent_feedback?.[0]) {
+      if ((mode === 'dpr' || mode === 'planned') && response.data.llm_result?.agent_feedback?.[0]) {
         feedbackContent = response.data.llm_result.agent_feedback[0];
       } else if (mode === 'dlr' && response.data.llm_result?.feedbacks?.[0]) {
         feedbackContent = response.data.llm_result.feedbacks[0];
@@ -346,6 +351,7 @@ const ChatInterface = ({ selectedSheet, user }) => {
             </h3>
             <p className="text-gray-600 max-w-md mx-auto text-balance mb-6">
               {mode === 'dpr' && 'Describe your daily progress updates and I\'ll help you update the DPR sheet.'}
+              {mode === 'planned' && 'Describe your planned progress updates and I\'ll help you fill the planned columns in the DPR sheet.'}
               {mode === 'dlr' && 'Tell me about your daily activities and I\'ll update the DLR sheet with fuzzy matching.'}
               {mode === 'logs' && 'Ask me questions about the log data and I\'ll provide insights and analysis.'}
             </p>
