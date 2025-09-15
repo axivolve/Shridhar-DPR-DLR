@@ -303,6 +303,11 @@ async def get_current_simple_user_info(current_user: dict = Depends(get_current_
         "updated_at": user.updated_at
     }
 
+@app.post("/logout")
+async def logout():
+    """Simple logout endpoint - returns success message"""
+    return {"success": True, "message": "Logged out successfully"}
+
 @app.get("/documents", response_model=DocumentListResponse)
 async def show_document_list(current_user: dict = Depends(get_current_user)):
     """
