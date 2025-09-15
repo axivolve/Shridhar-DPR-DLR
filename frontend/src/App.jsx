@@ -11,7 +11,7 @@ function App() {
       <div className="App min-h-screen bg-gray-50">
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth-result" element={<AuthCallback />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
           </Route>

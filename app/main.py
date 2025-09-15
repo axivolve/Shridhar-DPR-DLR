@@ -240,7 +240,7 @@ async def callback(code: str, user_id: str = None):
     if not result:
         # Redirect to frontend with error
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?error=authentication_failed")
+        return RedirectResponse(url=f"{frontend_url}/auth-result?error=authentication_failed")
     
     # If user_id is provided, this is a simple user linking Google account
     if user_id:
@@ -255,17 +255,17 @@ async def callback(code: str, user_id: str = None):
         
         if auth_result.success:
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-            return RedirectResponse(url=f"{frontend_url}/auth/callback?success=true&token={auth_result.token}")
+            return RedirectResponse(url=f"{frontend_url}/auth-result?success=true&token={auth_result.token}")
         else:
             frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
-            return RedirectResponse(url=f"{frontend_url}/auth/callback?error=google_linking_failed")
+            return RedirectResponse(url=f"{frontend_url}/auth-result?error=google_linking_failed")
     
     # Original Google OAuth flow for direct Google login
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     # URL encode the user name to handle special characters
     import urllib.parse
     encoded_user = urllib.parse.quote(result['user']['name'])
-    return RedirectResponse(url=f"{frontend_url}/auth/callback?code={code}&token={result['access_token']}&user={encoded_user}")
+    return RedirectResponse(url=f"{frontend_url}/auth-result?code={code}&token={result['access_token']}&user={encoded_user}")
 
 @app.get("/user/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
