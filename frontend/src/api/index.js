@@ -62,7 +62,7 @@ export const authAPI = {
   
   // Google login redirect (handled by backend)
   googleLogin: () => {
-    window.location.href = 'http://localhost:8000/auth/google-login';
+    window.location.href = `${API_BASE_URL}/auth/google-login`;
   },
 };
 
