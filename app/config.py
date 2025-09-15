@@ -97,7 +97,7 @@ Index 1: Site Engineer (e.g., "John Doe")
 Index 2: Phone Number (e.g., "1234567890")
 Index 3: Row (e.g., "98", "14")
 Index 4: Column (e.g., "BC", "D")
-Index 5: Value (e.g., "40", "100") 
+Index 5: Value (e.g., "40", "100") updated values .. so the last values is the actual values of that cell after any updation 
 Index 6: Type (e.g., "add", "replace", "remove")
 Index 7: Operation Date (e.g., "08-08-2025" or empty for DLR)
 Index 8: User Query (e.g., "Villa 101 excavation done by 40 cubic meter")

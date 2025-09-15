@@ -72,12 +72,6 @@ class DPRUpdationResult(BaseModel):
     agent_feedback: List[str] = Field(description="list of the agent feedback for the user's query just an single feedback for whole query")
     operation_date: str = Field(description="Date when the operation occurred in DD-MM-YYYY format. Extract from user query or use today's date. If multiple dates mentioned, leave empty and provide error feedback.")
 
-class DLRUpdationResult(BaseModel):
-    row_index: List[str] = Field(description="list of the row index mentioned in the user's query")
-    columns_index: List[str] = Field(description="list of the column index mentioned in the user's query")
-    activity_quantities: List[Tuple[str, str]] = Field(description="list of tuple of the activity quantities with the type (like add updation or replace updation or remove updation)")
-    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just an single feedback for whole query")
-
 class LogQueryResult(BaseModel):
     result: str = Field(description="Answer of the given Query based on the provide logs data")
 
@@ -125,8 +119,9 @@ class CopySpreadsheetResponse(BaseModel):
 class DLRUpdationResult(BaseModel):
     row_index: List[str] = Field(description="list of the row index mentioned in the user's query")
     columns_index: List[str] = Field(description="list of the column index mentioned in the user's query")
-    quantities: List[float] = Field(description="list of the quantities mentioned in the user's query")
-    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just a single feedback for whole query")
+    activity_quantities: List[Tuple[str, str]] = Field(description="list of tuple of the activity quantities with the type (like add updation or replace updation or remove updation)")
+    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just an single feedback for whole query")
+
 
 class UpdatedDLRRequest(BaseModel):
     site_engineer_name: str

@@ -1129,7 +1129,7 @@ async def update_dlr(
         
         # Step 6: Perform actual cell updates using direct column + row pattern
         update_summary = "No updates performed"
-        if (llm_response.row_index and llm_response.columns_index and llm_response.quantities):
+        if (llm_response.row_index and llm_response.columns_index and llm_response.activity_quantities):
             
             try:
                 # Prepare cell updates using columns_index[i] + row_index[i] pattern
@@ -1157,9 +1157,10 @@ async def update_dlr(
                     
                     cell_list.append(cell_ref)
                     
-                    # Use quantity directly with add operation for DLR
-                    updation_list.append(float(llm_response.quantities[i]))
-                    type_list.append("add")  # Use add operation for DLR to increment values
+                    # Extract quantity and operation type from activity_quantities
+                    quantity_str, operation_type = llm_response.activity_quantities[i]
+                    updation_list.append(float(quantity_str))
+                    type_list.append(operation_type)  # Use operation type from LLM response
                 
                 # Perform batch cell updates
                 update_result = await mcp_client.update_cells_with_operations(
