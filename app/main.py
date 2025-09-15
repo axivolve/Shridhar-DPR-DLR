@@ -718,7 +718,7 @@ async def update_dpr(
                             phone_number=request.phone_number,  # Add phone number
                             updated_row_index=str(calculated_row),  # Use calculated row directly
                             updated_column_index=target_column,
-                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updated_value=str(updation_list[i]),  # Log the user requested value
                             updation_type=type_list[i],
                             columns=target_column,
                             user_query=request.users_query,
@@ -972,7 +972,7 @@ async def update_dpr(
                             phone_number=request.phone_number,  # Add phone number
                             updated_row_index=str(calculated_row),  # Use calculated row directly
                             updated_column_index=target_column,
-                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updated_value=str(updation_list[i]),  # Log the user requested value
                             updation_type=type_list[i],
                             columns=target_column,
                             user_query=request.users_query,
@@ -1203,7 +1203,7 @@ async def update_dlr(
                             phone_number=request.phone_number,
                             updated_row_index=log_row_index,  # Corrected row (numeric)
                             updated_column_index=log_column_index,  # Corrected column (letter)
-                            updated_value=str(result.get('new_value', updation_list[i])),
+                            updated_value=str(updation_list[i]),  # Log the user requested value
                             updation_type=type_list[i],
                             columns=log_column_index,
                             user_query=request.users_query,
