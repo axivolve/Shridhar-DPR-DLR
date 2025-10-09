@@ -1167,6 +1167,23 @@ async def update_dlr(
         except Exception as llm_error:
             raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
         
+        # Check if LLM returned error response (empty arrays)
+        if not llm_response.row_index or not llm_response.columns_index or not llm_response.activity_quantities:
+            print("⚠️  LLM RETURNED ERROR RESPONSE - No valid data found")
+            error_feedback = llm_response.feedbacks[0] if llm_response.feedbacks else "Unable to process the request with provided data"
+            
+            return UpdatedDLRResponse(
+                success=False,
+                site_engineer_name=request.site_engineer_name,
+                phone_number=request.phone_number,
+                sheet_id=sheet_id,
+                users_query=request.users_query,
+                column_data_summary=f"Column data retrieved successfully from 8A",
+                row_data_summary=f"Row data retrieved successfully from 6A:6ZZ",
+                llm_result=llm_response,
+                error=error_feedback
+            )
+        
         # Step 6: Perform actual cell updates using direct column + row pattern
         update_summary = "No updates performed"
         if (llm_response.row_index and llm_response.columns_index and llm_response.activity_quantities):

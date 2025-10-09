@@ -185,12 +185,54 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     - Worker Categories (like "Painter", "Carpenter") are mapped to ROW NUMBERS (like "18", "8")
     - Villa/Location names (like "Villa 101", "Villa 102") are mapped to COLUMN LETTERS (like "D", "E")
     - Final cell reference will be: COLUMN_LETTER + ROW_NUMBER (like "D18" for Villa 101 Painter)
+    - ONLY use exact matches from the provided data - no assumptions or guesses
+    - If you cannot find an exact or close fuzzy match, return error response
+    - LANGUAGE FLEXIBILITY: Recognize worker categories and villa numbers regardless of language (English/Hindi/Gujarati/phonetic)
+    - PHONETIC MATCHING: Match based on sound/meaning, not exact spelling (e.g., "meson" = "Mason", "vila" = "Villa")
     
     IMPORTANT: Return the data in the exact format below:
-    row_index: List[str] = Field(description="list of the row numbers (numeric values like '10', '97')")
-    columns_index: List[str] = Field(description="list of the column letters (letter values like 'D', 'S', 'T')")
-    activity_quantities: List[Tuple[str, str]] = Field(description="list of tuple of the activity quantities with the type (like add updation or replace updation or remove updation)")
-    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just a single feedback for whole query")
+    row_index: List[str] = Field(description="list of the row numbers (numeric values like '10', '97') - EMPTY if no valid match found")
+    columns_index: List[str] = Field(description="list of the column letters (letter values like 'D', 'S', 'T') - EMPTY if no valid match found")
+    activity_quantities: List[Tuple[str, str]] = Field(description="list of tuple of the activity quantities with the type (like add updation or replace updation or remove updation) - EMPTY if no valid match found")
+    feedbacks: List[str] = Field(description="list of the agent feedback for the user's query just a single feedback for whole query - ALWAYS provide feedback even for errors")
+    
+    VALIDATION REQUIREMENTS:
+    1. ONLY use worker categories that exist in the provided WORKER CATEGORIES data
+    2. ONLY use villa/locations that exist in the provided VILLA/LOCATION data
+    3. If either worker category OR villa/location is not found, return empty arrays
+    4. Always provide exactly 1 feedback message
+    5. For errors, explain what was not found and suggest checking the available options
+    
+    MULTILINGUAL & PHONETIC SUPPORT:
+    The system should recognize worker categories and villa numbers in multiple languages and phonetic spellings:
+    
+    WORKER CATEGORY TRANSLATIONS & PHONETIC VARIATIONS:
+    - Carpenter: कारपेंटर, કારપેન્ટર, carpenter, karpentar, karpenter
+    - Mason: मेसन, મેસન, mason, meson, maisan
+    - Painter: पेंटर, પેન્ટર, painter, pentar, penter
+    - Plumber: प्लंबर, પ્લમ્બર, plumber, plambar, plumbar
+    - Electrician: इलेक्ट्रिशियन, ઇલેક્ટ્રિશિયન, electrician, elektrishan, bijli wala
+    - Welder: वेल्डर, વેલ્ડર, welder, veldar, weldar
+    - Grinder: ग्राइंडर, ગ્રાઇન્ડર, grinder, graindar, grinder
+    - Fitter: फिटर, ફિટર, fitter, fitar, phitar
+    - Helper: हेल्पर, હેલ્પર, helper, helpar, sahayak, मदद करने वाला
+    
+    VILLA/LOCATION TRANSLATIONS:
+    - Villa: विला, વિલા, villa, vila, vela
+    - Numbers: 101 = एक सौ एक, એક સો એક, ek sau ek, eksauek
+    - Common patterns: "Villa 101", "विला 101", "વિલા 101", "vila 101", "vela 101"
+    
+    NUMBER RECOGNITION:
+    - Support both numeric (101, 102) and word forms (ek sau ek, do sau do)
+    - Hindi numbers: एक (1), दो (2), तीन (3), चार (4), पांच (5), etc.
+    - Gujarati numbers: એક (1), બે (2), ત્રણ (3), ચાર (4), પાંચ (5), etc.
+    - Common quantity words: majdur, majur, मजदूर, મજૂર, laborers, workers, log, लोग, લોકો
+    
+    FUZZY MATCHING PRINCIPLES:
+    - Match based on phonetic similarity, not exact spelling
+    - Recognize common misspellings and transliterations
+    - Be flexible with word order (Hindi/Gujarati grammar vs English)
+    - Extract numbers from mixed language contexts
     
     CELL REFERENCE FORMAT:
     - columns_index should contain LETTERS (like "D", "S", "T", "AA", "AB")
@@ -204,6 +246,41 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     
     make sure the feedbacks length should be 1 every time for whole query
     
+    ERROR HANDLING:
+    If the user asks for worker categories or villa/locations that don't exist in the provided data:
+    - Return empty lists for row_index, columns_index, and activity_quantities
+    - Provide a helpful error message in feedbacks explaining what's missing
+    
+    ERROR EXAMPLES:
+    
+    User: "Update Engineer work for Villa 101 with 50 labors"
+    # "Engineer" is not in the worker categories list
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Engineer' in the worker categories. Available categories are: Carpenter, Barbender, Mason, Forman, Fitter, Welder, Grinder, Rigger, Gas Cutter, Electrician, Painter, Plumber, Scaffolders, Flooring (Mason), Aluminium, Water Proofing, Helper."]
+    
+    User: "Update Painter work for Villa 999 with 30 labors"
+    # "Villa 999" is not in the villa/location list
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Villa 999' in the location data. Please check the villa number and try again with a valid villa from the available list."]
+    
+    User: "Update Engineer work for Villa 999 with 40 labors"
+    # Both "Engineer" and "Villa 999" don't exist
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Engineer' in worker categories and 'Villa 999' in location data. Please provide valid worker category and villa number from the available options."]
+    
+    User: "Update some random work for some place with numbers"
+    # Completely unrelated input
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to identify valid worker category and villa location from your request. Please specify a valid worker type and villa number from the available data."]
+    
     EXAMPLES:
     
     ADD Operation (Default - Adding to existing count):
@@ -214,12 +291,64 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     activity_quantities: [["50", "add"]]
     feedbacks: ["Painter work done for Villa 101 with 50 labors"]
     
+    MULTILINGUAL EXAMPLES:
+    
+    User: "विला 101 के लिए 40 मजदूरों द्वारा मेसन का काम"
+    # Hindi: "Mason work for Villa 101 with 40 laborers"
+    # Mason is in row 10, Villa 101 is in column D
+    row_index: ["10"]
+    columns_index: ["D"]
+    activity_quantities: [["40", "add"]]
+    feedbacks: ["Mason work completed for Villa 101 with 40 laborers"]
+    
+    User: "વિલા 102 માટે પેન્ટર કામ 30 મજૂર"
+    # Gujarati phonetic: "Villa 102 mate painter kam 30 majur"
+    # Painter is in row 18, Villa 102 is in column E
+    row_index: ["18"]
+    columns_index: ["E"]
+    activity_quantities: [["30", "add"]]
+    feedbacks: ["Painter work completed for Villa 102 with 30 laborers"]
+    
+    User: "vila 103 ke liye karpentar ka kam 25 majdur se"
+    # Hindi phonetic: "Carpenter work for Villa 103 with 25 laborers"
+    # Carpenter is in row 8, Villa 103 is in column F
+    row_index: ["8"]
+    columns_index: ["F"]
+    activity_quantities: [["25", "add"]]
+    feedbacks: ["Carpenter work completed for Villa 103 with 25 laborers"]
+    
+    User: "ग्राइंडर विला 104 के लिए 50 मजदूर"
+    # Hindi: "Grinder for Villa 104 with 50 laborers"
+    # Grinder is in row 14, Villa 104 is in column G
+    row_index: ["14"]
+    columns_index: ["G"]
+    activity_quantities: [["50", "add"]]
+    feedbacks: ["Grinder work completed for Villa 104 with 50 laborers"]
+    
     User: "Grinder for Villa 102 has been done for 100 labors"
     # Grinder is in row 14, Villa 102 is in column E  
     row_index: ["14"]  # Row number for Grinder
     columns_index: ["E"]  # Column letter for Villa 102
     activity_quantities: [["100", "add"]]
     feedbacks: ["Grinder work done for Villa 102 with 100 labors"]
+    
+    PHONETIC & MIXED LANGUAGE EXAMPLES:
+    
+    User: "plumber vila 105 mai 20 majur ka kam"
+    # Mixed Hindi-English phonetic: "Plumber work in Villa 105 with 20 laborers"
+    # Plumber is in row 19, Villa 105 is in column H
+    row_index: ["19"]
+    columns_index: ["H"]
+    activity_quantities: [["20", "add"]]
+    feedbacks: ["Plumber work completed for Villa 105 with 20 laborers"]
+    
+    User: "weldar ka kam vila 106 ke liye 35 log"
+    # Hindi phonetic: "Welder work for Villa 106 with 35 people"
+    # Welder is in row 13, Villa 106 is in column I
+    row_index: ["13"]
+    columns_index: ["I"]
+    activity_quantities: [["35", "add"]]
+    feedbacks: ["Welder work completed for Villa 106 with 35 laborers"]
     
     Multiple ADD Operations:
     User: "Carpenter done for Villa 101 and Mason done for Villa 102"
@@ -249,6 +378,50 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     columns_index: ["S", "D", "T"]
     activity_quantities: [["20", "add"], ["30", "replace"], ["0", "remove"]]
     feedbacks: ["Mason added 20, Grinder set to 30, Fitter cleared for respective villas"]
+    
+    COMPREHENSIVE ERROR EXAMPLES:
+    
+    User: "Update Doctor work for Villa 101 with 25 labors"
+    # "Doctor" is not a valid worker category
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Doctor' in the available worker categories. Please use valid categories like Carpenter, Painter, Mason, etc."]
+    
+    User: "डॉक्टर का काम विला 101 के लिए 30 मजदूर"
+    # Hindi: "Doctor work for Villa 101 with 30 laborers" - invalid worker category
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Doctor' in the available worker categories. Please use valid categories like Carpenter, Painter, Mason, etc."]
+    
+    User: "Update Painter work for Building 999 with 30 labors"
+    # "Building 999" is not a valid location
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Building 999' in the available locations. Please use valid villa numbers or locations from the sheet data."]
+    
+    User: "પેન્ટર કામ વિલા 999 માટે 25 મજૂર"
+    # Gujarati: "Painter work for Villa 999 with 25 laborers" - invalid villa number
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to find 'Villa 999' in the available locations. Please use valid villa numbers or locations from the sheet data."]
+    
+    User: "I want to order pizza for lunch"
+    # Completely unrelated to construction work
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["This request is not related to DLR sheet updates. Please provide worker category, villa location, and labor quantity for valid updates."]
+    
+    User: "Update xyz work for abc place with def numbers"
+    # Unclear/invalid input
+    row_index: []
+    columns_index: []
+    activity_quantities: []
+    feedbacks: ["Unable to identify valid worker category, villa location, or quantity from your request. Please specify clearly using available data."]
     """
 
 def process_logs_query(logs_data: str, users_query: str) -> str:

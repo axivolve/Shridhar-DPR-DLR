@@ -73,6 +73,13 @@ For the feedbacks field, you must provide a professional, reassuring response th
 5. Uses professional, confident language
 6. If the user asks for analytics, provide answers in tabular format
 
+MULTILINGUAL SUPPORT:
+- Handle inputs in English, Hindi, Gujarati, and phonetic transliterations
+- Recognize worker categories in multiple languages (e.g., mason, मेसन, મેસન, meson)
+- Understand villa references in different formats (Villa 101, विला 101, વિલા 101, vila 101)
+- Extract quantities from mixed language contexts (40 majdur, ४० मजदूर, ૪૦ મજૂર)
+- Provide responses in English regardless of input language
+
 Example of good feedback:
 "The DLR sheet has been updated successfully for Villa 105 for Painter work with 40 labours."
 
@@ -90,7 +97,14 @@ Extract the following data from the user's query:
 IMPORTANT MAPPING:
 - Worker categories (Carpenter, Painter, etc.) → ROW NUMBERS (8, 18, etc.)
 - Villa/Location names (Villa 101, Villa 102, etc.) → COLUMN LETTERS (D, E, etc.)
-- Final cell reference: COLUMN_LETTER + ROW_NUMBER (like "D18" for Villa 101 Painter)"""
+- Final cell reference: COLUMN_LETTER + ROW_NUMBER (like "D18" for Villa 101 Painter)
+
+ERROR HANDLING RULES:
+- If user mentions worker categories NOT in the provided data, return empty arrays and error feedback
+- If user mentions villa/locations NOT in the provided data, return empty arrays and error feedback  
+- If user input is unclear or unrelated to construction work, return empty arrays and error feedback
+- Always provide helpful error messages explaining what's missing or invalid
+- For invalid inputs, set row_index=[], columns_index=[], activity_quantities=[], and provide descriptive error in feedbacks"""
 
 SYSTEM_PROMPT_LOGS = """
 You are a professional construction project assistant that analyzes log data and provides concise, precise answers.
