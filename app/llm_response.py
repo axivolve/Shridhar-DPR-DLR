@@ -173,13 +173,18 @@ these are the examples which i'm getting the output of the llm so you should giv
 def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query: str) -> str:
     return f"""
     here is the data of the sheet which is associated with it's indexing
-    here is the data from column {column_name}
-    here is the data from row {row_data}
+    here is the WORKER CATEGORIES with their ROW NUMBERS: {column_name}
+    here is the VILLA/LOCATION DATA with their COLUMN LETTERS: {row_data}
     
     aand here is the user's query
     user's query: {users_query}
     
     could u please find and return the best fit row and column index and quantity for the user's query
+    
+    IMPORTANT MAPPING RULES:
+    - Worker Categories (like "Painter", "Carpenter") are mapped to ROW NUMBERS (like "18", "8")
+    - Villa/Location names (like "Villa 101", "Villa 102") are mapped to COLUMN LETTERS (like "D", "E")
+    - Final cell reference will be: COLUMN_LETTER + ROW_NUMBER (like "D18" for Villa 101 Painter)
     
     IMPORTANT: Return the data in the exact format below:
     row_index: List[str] = Field(description="list of the row numbers (numeric values like '10', '97')")
@@ -202,18 +207,27 @@ def prompt_builder_for_dlr_updation(column_name: str, row_data: str, users_query
     EXAMPLES:
     
     ADD Operation (Default - Adding to existing count):
-    User: "Grinder for Villa 101 has been done for 100 labors"
-    row_index: ["14"]  # Row number
-    columns_index: ["D"]  # Column letter  
+    User: "Painter for Villa 101 has been done for 50 labors"
+    # Painter is in row 18, Villa 101 is in column D
+    row_index: ["18"]  # Row number for Painter
+    columns_index: ["D"]  # Column letter for Villa 101
+    activity_quantities: [["50", "add"]]
+    feedbacks: ["Painter work done for Villa 101 with 50 labors"]
+    
+    User: "Grinder for Villa 102 has been done for 100 labors"
+    # Grinder is in row 14, Villa 102 is in column E  
+    row_index: ["14"]  # Row number for Grinder
+    columns_index: ["E"]  # Column letter for Villa 102
     activity_quantities: [["100", "add"]]
-    feedbacks: ["Grinder done for Villa101 with 100 labors"]
+    feedbacks: ["Grinder work done for Villa 102 with 100 labors"]
     
     Multiple ADD Operations:
-    User: "Fitter done for Villa 101 and Mason done for Villa 102"
-    row_index: ["10", "97"]  # Row numbers
-    columns_index: ["S", "T"]  # Column letters
+    User: "Carpenter done for Villa 101 and Mason done for Villa 102"
+    # Carpenter is in row 8, Villa 101 is in column D; Mason is in row 10, Villa 102 is in column E
+    row_index: ["8", "10"]  # Row numbers for Carpenter and Mason
+    columns_index: ["D", "E"]  # Column letters for Villa 101 and Villa 102
     activity_quantities: [["100", "add"], ["100", "add"]]
-    feedbacks: ["Fitter done for Villa101 and Mason done for Villa102"]
+    feedbacks: ["Carpenter done for Villa 101 and Mason done for Villa 102"]
     
     REPLACE Operation (Setting exact count):
     User: "Update Grinder count for Villa 101 to exactly 50 labors"

@@ -82,10 +82,15 @@ Another example:
 Always extract meaningful project details from the user's query and use professional, assuring language that makes the user confident that their update was processed correctly.
 
 Extract the following data from the user's query:
-- row_index: List of row indices mentioned
-- columns_index: List of column indices mentioned
-- quantities: List of quantities mentioned
-- feedbacks: A single professional, reassuring message that includes project name, work type, and quantity"""
+- row_index: List of row indices mentioned (numeric values from worker categories)
+- columns_index: List of column indices mentioned (letter values from villa/location data)
+- activity_quantities: List of tuples with (quantity, operation_type)
+- feedbacks: A single professional, reassuring message that includes project name, work type, and quantity
+
+IMPORTANT MAPPING:
+- Worker categories (Carpenter, Painter, etc.) → ROW NUMBERS (8, 18, etc.)
+- Villa/Location names (Villa 101, Villa 102, etc.) → COLUMN LETTERS (D, E, etc.)
+- Final cell reference: COLUMN_LETTER + ROW_NUMBER (like "D18" for Villa 101 Painter)"""
 
 SYSTEM_PROMPT_LOGS = """
 You are a professional construction project assistant that analyzes log data and provides concise, precise answers.

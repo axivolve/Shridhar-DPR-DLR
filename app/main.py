@@ -1102,11 +1102,27 @@ async def update_dlr(
         column_matches_str = str(column_fuzzy_matches)
         row_matches_str = str(row_fuzzy_matches)
         
+        # DEBUG: Print fuzzy matching results
+        print("=" * 80)
+        print("🔍 FUZZY MATCHING RESULTS:")
+        print(f"📝 User Query: {request.users_query}")
+        print(f"📊 Column Data Retrieved: {column_data}")
+        print(f"🎯 Column Fuzzy Matches: {column_fuzzy_matches}")
+        print(f"📊 Row Data Retrieved: {row_data}")
+        print(f"🎯 Row Fuzzy Matches: {row_fuzzy_matches}")
+        print("=" * 80)
+        
         prompt = prompt_builder_for_dlr_updation(
             column_name=column_matches_str,
             row_data=row_matches_str,
             users_query=request.users_query
         )
+        
+        # DEBUG: Print the actual prompt being sent to LLM
+        print("🤖 PROMPT SENT TO LLM:")
+        print("-" * 60)
+        print(prompt)
+        print("-" * 60)
         
         # Step 5: Get LLM agent and process the prompt
         api_key = request.groq_api_key or GROQ_API_KEY
@@ -1125,12 +1141,28 @@ async def update_dlr(
             else:
                 llm_response = run_response
                 
+            # DEBUG: Print raw LLM response
+            print("🧠 RAW LLM RESPONSE:")
+            print("-" * 60)
+            print(f"Type: {type(llm_response)}")
+            print(f"Content: {llm_response}")
+            print("-" * 60)
+                
             # Validate that we have a proper DLRUpdationResult
             if not isinstance(llm_response, DLRUpdationResult):
                 if isinstance(llm_response, dict):
                     llm_response = DLRUpdationResult(**llm_response)
                 else:
                     raise ValueError(f"Invalid LLM response type: {type(llm_response)}")
+            
+            # DEBUG: Print structured LLM response
+            print("✅ STRUCTURED LLM RESPONSE:")
+            print("-" * 60)
+            print(f"🎯 Row Index: {llm_response.row_index}")
+            print(f"📊 Column Index: {llm_response.columns_index}")
+            print(f"🔢 Activity Quantities: {llm_response.activity_quantities}")
+            print(f"💬 Feedbacks: {llm_response.feedbacks}")
+            print("-" * 60)
                     
         except Exception as llm_error:
             raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
@@ -1145,23 +1177,33 @@ async def update_dlr(
                 updation_list = []
                 type_list = []
                 
+                print("🔧 CELL UPDATE PROCESSING:")
+                print("-" * 60)
+                
                 for i in range(len(llm_response.row_index)):
                     # Direct cell reference: columns_index[i] + row_index[i]
                     # Note: LLM might return them in wrong order, so we need to check which is numeric
                     col_val = llm_response.columns_index[i]
                     row_val = llm_response.row_index[i]
                     
+                    print(f"Processing update {i+1}:")
+                    print(f"  📍 Original col_val: '{col_val}' (is_digit: {col_val.isdigit()})")
+                    print(f"  📍 Original row_val: '{row_val}' (is_digit: {row_val.isdigit()})")
+                    
                     # Determine correct cell reference - column should be letters, row should be numbers
                     if col_val.isdigit() and not row_val.isdigit():
                         # LLM returned them swapped: columns_index is numeric, row_index is letters
                         # Correct format: row_val (letters) + col_val (numbers) = like "D14"
                         cell_ref = f"{row_val}{col_val}"
+                        print(f"  🔄 SWAPPED: {cell_ref} (row_val + col_val)")
                     elif not col_val.isdigit() and row_val.isdigit():
                         # Correct format: columns_index is letters, row_index is numbers = like "S10"
                         cell_ref = f"{col_val}{row_val}"
+                        print(f"  ✅ CORRECT: {cell_ref} (col_val + row_val)")
                     else:
                         # Fallback to original format if unclear
                         cell_ref = f"{col_val}{row_val}"
+                        print(f"  ⚠️  FALLBACK: {cell_ref} (col_val + row_val)")
                     
                     cell_list.append(cell_ref)
                     
@@ -1169,6 +1211,13 @@ async def update_dlr(
                     quantity_str, operation_type = llm_response.activity_quantities[i]
                     updation_list.append(float(quantity_str))
                     type_list.append(operation_type)  # Use operation type from LLM response
+                    
+                    print(f"  💾 Final cell: {cell_ref}, quantity: {quantity_str}, operation: {operation_type}")
+                
+                print(f"📋 Final Cell List: {cell_list}")
+                print(f"📋 Final Update List: {updation_list}")
+                print(f"📋 Final Type List: {type_list}")
+                print("-" * 60)
                 
                 # Perform batch cell updates
                 update_result = await mcp_client.update_cells_with_operations(
