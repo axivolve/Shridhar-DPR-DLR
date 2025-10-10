@@ -20,10 +20,12 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }) => {
         setApiKey(existingKey);
         validateApiKey(existingKey);
       } else {
-        // Prefill with default API key
-        const defaultKey = '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';
-        setApiKey(defaultKey);
-        validateApiKey(defaultKey);
+        // Prefill with default API key from environment
+        const defaultKey = import.meta.env.VITE_DEFAULT_GROQ_API_KEY || '';
+        if (defaultKey) {
+          setApiKey(defaultKey);
+          validateApiKey(defaultKey);
+        }
       }
     }
   }, [isOpen]);
