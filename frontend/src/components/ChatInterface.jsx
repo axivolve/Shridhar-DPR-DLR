@@ -394,30 +394,46 @@ const ChatInterface = ({ selectedSheet, user }) => {
 
       if (mode === 'dpr') {
         response = await dprAPI.updateDPR(selectedSheet.id, requestBody);
+        console.log('✅ DPR API Response:', response);
+        console.log('✅ Response Data:', response.data);
+        console.log('✅ Success Field:', response.data.success);
+        console.log('✅ Error Field:', response.data.error);
       } else if (mode === 'planned') {
         response = await dprAPI.updateDPRPlanned(selectedSheet.id, requestBody);
+        console.log('✅ DPR Planned API Response:', response);
       } else if (mode === 'dlr') {
         response = await dlrAPI.updateDLR(selectedSheet.id, requestBody);
+        console.log('✅ DLR API Response:', response);
       } else if (mode === 'logs') {
         response = await logsAPI.analyzeLogs(selectedSheet.id, {
           users_query: inputMessage,
         });
+        console.log('✅ Logs API Response:', response);
       }
 
+      console.log('📋 Extracting feedback from response...');
+      
       // Extract feedback based on response type and mode
       let feedbackContent = 'Operation completed successfully';
       
       if ((mode === 'dpr' || mode === 'planned') && response.data.llm_result?.agent_feedback?.[0]) {
         feedbackContent = response.data.llm_result.agent_feedback[0];
+        console.log('✅ Feedback extracted from agent_feedback:', feedbackContent);
       } else if (mode === 'dlr' && response.data.llm_result?.feedbacks?.[0]) {
         feedbackContent = response.data.llm_result.feedbacks[0];
+        console.log('✅ Feedback extracted from feedbacks:', feedbackContent);
       } else if (mode === 'logs' && response.data.feedback) {
         feedbackContent = response.data.feedback;
+        console.log('✅ Feedback extracted from logs feedback:', feedbackContent);
       } else if (response.data.feedback) {
         feedbackContent = response.data.feedback;
+        console.log('✅ Feedback extracted from response.data.feedback:', feedbackContent);
       } else if (response.data.llm_result?.feedback) {
         feedbackContent = response.data.llm_result.feedback;
+        console.log('✅ Feedback extracted from llm_result.feedback:', feedbackContent);
       }
+
+      console.log('📝 Creating AI message with content:', feedbackContent);
 
       const aiMessage = {
         id: Date.now() + 1,
@@ -430,11 +446,19 @@ const ChatInterface = ({ selectedSheet, user }) => {
 
       setMessages(prev => [...prev, aiMessage]);
       
+      console.log('💾 Saving chat message to history...');
       // Save chat history (user message + assistant response)
       await saveChatMessage(inputMessage, feedbackContent);
+      console.log('✅ Chat message saved successfully');
       
     } catch (error) {
-      console.error('Error:', error);
+      console.error('❌ ERROR CAUGHT in handleSendMessage:');
+      console.error('   Error object:', error);
+      console.error('   Error message:', error.message);
+      console.error('   Error response:', error.response);
+      console.error('   Error response data:', error.response?.data);
+      console.error('   Error response detail:', error.response?.data?.detail);
+      
       const errorMessage = {
         id: Date.now() + 1,
         type: 'error',
@@ -444,8 +468,9 @@ const ChatInterface = ({ selectedSheet, user }) => {
       };
       setMessages(prev => [...prev, errorMessage]);
       
-      // Save error message to history as well
-      await saveChatMessage(inputMessage, errorMessage.content);
+      // DON'T save error messages to history - only save successful operations
+      // await saveChatMessage(inputMessage, errorMessage.content);
+      console.log('❌ Error message NOT saved to history (errors should not persist)');
       
     } finally {
       setIsLoading(false);

@@ -600,7 +600,7 @@ async def update_dpr(
         # print("ACTIVITY_DATA_STR")
         # print(activity_data_str)
 
-        print("_" * 30)
+        # print("_" * 30)
         # Build prompt using the prompt builder
         prompt = prompt_builder(
             element_data=element_data_str,
@@ -704,10 +704,6 @@ async def update_dpr(
                 # print(f"📞 Phone: {request.phone_number}")
                 # print(f"💬 Query: {request.users_query}")
                 # print("-"*80)
-                # print("Element index and activity index based cell calculations:")
-                # print(llm_response.element_index)
-                # print(llm_response.activity_index)
-                # print("-") 
 
                 for i in range(len(llm_response.element_index)):
                     # Calculate row: element_index + activity_index
@@ -724,19 +720,19 @@ async def update_dpr(
                     updation_list.append(float(quantity_str))
                     type_list.append(operation_type)
                     
-                    print(f"\n✏️  Update #{i+1}:")
-                    print(f"   📌 Cell: {cell_ref}")
-                    print(f"   📍 Row: {target_row} (Element: {element_idx} + Activity: {activity_idx})")
-                    print(f"   📊 Column: {target_column}")
-                    print(f"   🔢 Value: {quantity_str}")
-                    print(f"   🔧 Operation: {operation_type}")
+                #     print(f"\n✏️  Update #{i+1}:")
+                #     print(f"   📌 Cell: {cell_ref}")
+                #     print(f"   📍 Row: {target_row} (Element: {element_idx} + Activity: {activity_idx})")
+                #     print(f"   📊 Column: {target_column}")
+                #     print(f"   🔢 Value: {quantity_str}")
+                #     print(f"   🔧 Operation: {operation_type}")
                 
-                print("\n" + "-"*80)
-                print(f"📋 Summary: {len(cell_list)} cells to be updated")
-                print(f"📋 Cells: {cell_list}")
-                print(f"📋 Values: {updation_list}")
-                print(f"📋 Operations: {type_list}")
-                print("="*80 + "\n")
+                # print("\n" + "-"*80)
+                # print(f"📋 Summary: {len(cell_list)} cells to be updated")
+                # print(f"📋 Cells: {cell_list}")
+                # print(f"📋 Values: {updation_list}")
+                # print(f"📋 Operations: {type_list}")
+                # print("="*80 + "\n")
                 
                 # Perform batch cell updates
                 update_result = await mcp_client.update_cells_with_operations(
@@ -788,7 +784,31 @@ async def update_dpr(
         element_summary = f"Column B data from row 10: {len(element_result.get('data', {}))} rows retrieved"
         activity_summary = f"Range C10:E96 data (0-indexed): {len(zero_indexed_activity_data)} rows retrieved"
         
-        return UpdatedSheetResponse(
+        # Debug: Log the final response structure before returning
+        # print("\n" + "🔍" * 40)
+        # print("DEBUG: FINAL RESPONSE TO FRONTEND (/update-dpr)")
+        # print("="*80)
+        # print(f"✅ Success: True")
+        # print(f"👤 Site Engineer: {request.site_engineer_name}")
+        # print(f"📞 Phone: {request.phone_number}")
+        # print(f"📋 Sheet ID: {sheet_id}")
+        # print(f"📋 Sheet Name: DPR")
+        # print(f"💬 User Query: {request.users_query}")
+        # print(f"📊 Element Summary: {element_summary}")
+        # print(f"📊 Activity Summary: {activity_summary}. {update_summary}")
+        # print(f"\n🤖 LLM Result:")
+        # if llm_response:
+        #     print(f"   Element Index: {llm_response.element_index}")
+        #     print(f"   Activity Index: {llm_response.activity_index}")
+        #     print(f"   Quantities: {llm_response.activity_quantities}")
+        #     print(f"   Operation Date: {llm_response.operation_date}")
+        #     print(f"   Agent Feedback: {llm_response.agent_feedback}")
+        # else:
+        #     print(f"   LLM Response: None")
+        # print("="*80)
+        # print("🔍" * 40 + "\n")
+        
+        response = UpdatedSheetResponse(
             success=True,
             site_engineer_name=request.site_engineer_name,
             phone_number=request.phone_number,
@@ -797,8 +817,21 @@ async def update_dpr(
             users_query=request.users_query,
             element_data_summary=element_summary,
             activity_data_summary=f"{activity_summary}. {update_summary}",
-            llm_result=llm_response
+            llm_result=llm_response,
+            error=None  # Explicitly set to None for successful operations
         )
+        
+        # Log the actual response dict
+        # response_dict = response.dict()
+        # print(f"📤 RESPONSE STRUCTURE:")
+        # print(f"   Keys: {list(response_dict.keys())}")
+        # print(f"   success: {response_dict['success']}")
+        # print(f"   error: {response_dict.get('error')}")
+        # print(f"   llm_result exists: {response_dict.get('llm_result') is not None}")
+        # if response_dict.get('llm_result'):
+        #     print(f"   llm_result.agent_feedback: {response_dict['llm_result'].get('agent_feedback')}\n")
+        
+        return response
         
     except HTTPException as e:
         raise e
@@ -1150,14 +1183,14 @@ async def update_dlr(
         row_matches_str = str(row_fuzzy_matches)
         
         # DEBUG: Print fuzzy matching results
-        print("=" * 80)
-        print("🔍 FUZZY MATCHING RESULTS:")
-        print(f"📝 User Query: {request.users_query}")
-        print(f"📊 Column Data Retrieved: {column_data}")
-        print(f"🎯 Column Fuzzy Matches: {column_fuzzy_matches}")
-        print(f"📊 Row Data Retrieved: {row_data}")
-        print(f"🎯 Row Fuzzy Matches: {row_fuzzy_matches}")
-        print("=" * 80)
+        # print("=" * 80)
+        # print("🔍 FUZZY MATCHING RESULTS:")
+        # print(f"📝 User Query: {request.users_query}")
+        # print(f"📊 Column Data Retrieved: {column_data}")
+        # print(f"🎯 Column Fuzzy Matches: {column_fuzzy_matches}")
+        # print(f"📊 Row Data Retrieved: {row_data}")
+        # print(f"🎯 Row Fuzzy Matches: {row_fuzzy_matches}")
+        # print("=" * 80)
         
         prompt = prompt_builder_for_dlr_updation(
             column_name=column_matches_str,
@@ -1166,10 +1199,10 @@ async def update_dlr(
         )
         
         # DEBUG: Print the actual prompt being sent to LLM
-        print("🤖 PROMPT SENT TO LLM:")
-        print("-" * 60)
-        print(prompt)
-        print("-" * 60)
+        # print("🤖 PROMPT SENT TO LLM:")
+        # print("-" * 60)
+        # print(prompt)
+        # print("-" * 60)
         
         # Step 5: Get LLM agent and process the prompt
         api_key = request.groq_api_key or GROQ_API_KEY
@@ -1189,11 +1222,11 @@ async def update_dlr(
                 llm_response = run_response
                 
             # DEBUG: Print raw LLM response
-            print("🧠 RAW LLM RESPONSE:")
-            print("-" * 60)
-            print(f"Type: {type(llm_response)}")
-            print(f"Content: {llm_response}")
-            print("-" * 60)
+            # print("🧠 RAW LLM RESPONSE:")
+            # print("-" * 60)
+            # print(f"Type: {type(llm_response)}")
+            # print(f"Content: {llm_response}")
+            # print("-" * 60)
                 
             # Validate that we have a proper DLRUpdationResult
             if not isinstance(llm_response, DLRUpdationResult):
@@ -1203,13 +1236,13 @@ async def update_dlr(
                     raise ValueError(f"Invalid LLM response type: {type(llm_response)}")
             
             # DEBUG: Print structured LLM response
-            print("✅ STRUCTURED LLM RESPONSE:")
-            print("-" * 60)
-            print(f"🎯 Row Index: {llm_response.row_index}")
-            print(f"📊 Column Index: {llm_response.columns_index}")
-            print(f"🔢 Activity Quantities: {llm_response.activity_quantities}")
-            print(f"💬 Feedbacks: {llm_response.feedbacks}")
-            print("-" * 60)
+            # print("✅ STRUCTURED LLM RESPONSE:")
+            # print("-" * 60)
+            # print(f"🎯 Row Index: {llm_response.row_index}")
+            # print(f"📊 Column Index: {llm_response.columns_index}")
+            # print(f"🔢 Activity Quantities: {llm_response.activity_quantities}")
+            # print(f"💬 Feedbacks: {llm_response.feedbacks}")
+            # print("-" * 60)
                     
         except Exception as llm_error:
             raise HTTPException(status_code=500, detail=f"LLM processing error: {str(llm_error)}")
