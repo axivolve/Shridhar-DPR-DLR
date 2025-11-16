@@ -562,6 +562,7 @@ async def update_dpr(
             sheet="DPR",
             cell_reference="B10"
         )
+
         
         if not element_result.get('success', False):
             raise HTTPException(status_code=500, detail=f"Failed to get element data: {element_result.get('error', 'Unknown error')}")
@@ -574,6 +575,9 @@ async def update_dpr(
             range_name="C10:E96"
         )
         
+        # print("activity_result:", activity_result)
+        # print("_" * 30) 
+
         if not activity_result.get('success', False):
             raise HTTPException(status_code=500, detail=f"Failed to get activity data: {activity_result.get('error', 'Unknown error')}")
         
@@ -586,9 +590,17 @@ async def update_dpr(
             zero_indexed_activity_data[index] = row_data
         
         # Convert data to string format for prompt
-        element_data_str = str(element_result.get('data', {}))
-        activity_data_str = str(zero_indexed_activity_data)
+        element_data_str = str(get_best_fuzzy_matches(request.users_query, element_result.get('data', {}), 15))
+        activity_data_str = str(get_best_fuzzy_matches(request.users_query, zero_indexed_activity_data, 15))
         
+        # print("_" * 30) 
+        # print("ELEMENT_DATA_STR") 
+        # print(element_data_str) 
+        # print("_" * 30) 
+        # print("ACTIVITY_DATA_STR")
+        # print(activity_data_str)
+
+        print("_" * 30)
         # Build prompt using the prompt builder
         prompt = prompt_builder(
             element_data=element_data_str,
@@ -683,6 +695,20 @@ async def update_dpr(
                 updation_list = []
                 type_list = []
                 
+                # print("\n" + "="*80)
+                # print("📊 DPR UPDATE DETAILS")
+                # print("="*80)
+                # print(f"📅 Operation Date: {llm_response.operation_date}")
+                # print(f"📍 Target Column: {target_column}")
+                # print(f"👤 Site Engineer: {request.site_engineer_name}")
+                # print(f"📞 Phone: {request.phone_number}")
+                # print(f"💬 Query: {request.users_query}")
+                # print("-"*80)
+                # print("Element index and activity index based cell calculations:")
+                # print(llm_response.element_index)
+                # print(llm_response.activity_index)
+                # print("-") 
+
                 for i in range(len(llm_response.element_index)):
                     # Calculate row: element_index + activity_index
                     element_idx = int(llm_response.element_index[i])
@@ -697,6 +723,20 @@ async def update_dpr(
                     quantity_str, operation_type = llm_response.activity_quantities[i]
                     updation_list.append(float(quantity_str))
                     type_list.append(operation_type)
+                    
+                    print(f"\n✏️  Update #{i+1}:")
+                    print(f"   📌 Cell: {cell_ref}")
+                    print(f"   📍 Row: {target_row} (Element: {element_idx} + Activity: {activity_idx})")
+                    print(f"   📊 Column: {target_column}")
+                    print(f"   🔢 Value: {quantity_str}")
+                    print(f"   🔧 Operation: {operation_type}")
+                
+                print("\n" + "-"*80)
+                print(f"📋 Summary: {len(cell_list)} cells to be updated")
+                print(f"📋 Cells: {cell_list}")
+                print(f"📋 Values: {updation_list}")
+                print(f"📋 Operations: {type_list}")
+                print("="*80 + "\n")
                 
                 # Perform batch cell updates
                 update_result = await mcp_client.update_cells_with_operations(
@@ -840,9 +880,16 @@ async def update_dpr(
             zero_indexed_activity_data[index] = row_data
         
         # Convert data to string format for prompt
-        element_data_str = str(element_result.get('data', {}))
-        activity_data_str = str(zero_indexed_activity_data)
+        element_data_str = str(get_best_fuzzy_matches(request.users_query, element_result.get('data', {}), 15))
+        activity_data_str = str(get_best_fuzzy_matches(request.users_query, zero_indexed_activity_data, 15))
         
+        # print("_" * 30)
+        # print("ELEMENT_DATA_STR")
+        # print(element_data_str)
+        # print("_" * 30)
+        # print("ACTIVITY_DATA_STR") 
+        # print(activity_data_str)
+
         # Build prompt using the prompt builder
         prompt = prompt_builder(
             element_data=element_data_str,

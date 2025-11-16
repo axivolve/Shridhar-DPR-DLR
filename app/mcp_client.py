@@ -201,10 +201,10 @@ class MCPGoogleSheetsClient:
             # Build sheets service
             service = build('sheets', 'v4', credentials=credentials)
             
-            # Read a large range to capture all data (we'll process it to find the actual end)
-            # Using 1000 rows should be sufficient for most use cases
-            end_row = start_row + 999  # Read up to 1000 rows
-            range_to_read = f"{column}{start_row}:{column}{end_row}"
+            # Read open-ended range - NO ROW LIMIT!
+            # Google Sheets API will read until the last row with data
+            # Only stopping condition is 10 consecutive empty rows
+            range_to_read = f"{column}{start_row}:{column}"
             
             # Get sheet data
             result = service.spreadsheets().values().get(
