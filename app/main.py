@@ -31,7 +31,7 @@ app = FastAPI(title="Simple Google Sheets API with MCP", version="1.0.0")
 
 # Add CORS middleware
 import os
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://dpr.ashridhar.com,http://dpr.ashridhar.com:8000").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080,https://dpr.ashridhar.com,http://dpr.ashridhar.com:8000").split(",")
 
 app.add_middleware(
     CORSMiddleware,

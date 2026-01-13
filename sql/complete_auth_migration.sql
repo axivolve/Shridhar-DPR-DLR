@@ -4,7 +4,7 @@
 -- 1. Create simple_users table for basic authentication
 CREATE TABLE IF NOT EXISTS simple_users (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    mobile_number VARCHAR(10) NOT NULL,
+    mobile_number VARCHAR(20) NOT NULL,
     password VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     name VARCHAR(255),
